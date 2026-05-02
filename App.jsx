@@ -690,12 +690,13 @@ function HomeTab({ matrix, onCellClick, competitors, onAddComp, onEditComp }) {
                     const cell=matrix[key]; if(!cell)return null;
                     const {bg,border}=cellBg(cell.progress);
                     const isAlert=cell.priority==="高"&&cell.progress<50;
+                    const isEmpty=cell.progress===0&&!cell.kpi&&!cell.kgi&&!cell.ksf&&!cell.risk&&!cell.next;
                     return (
                       <button key={key} onClick={()=>onCellClick(cell)}
-                        style={{padding:"5px 3px",borderRadius:7,border:`1px solid ${border}`,background:bg,cursor:"pointer",textAlign:"center",position:"relative"}}>
+                        style={{padding:"5px 3px",borderRadius:7,border:`1px solid ${border}`,background:isEmpty?C.card:bg,cursor:"pointer",textAlign:"center",position:"relative"}}>
                         {isAlert&&<span style={{position:"absolute",top:2,right:2,width:5,height:5,borderRadius:"50%",background:C.red,display:"block"}}/>}
-                        <div style={{fontSize:10,fontWeight:800,color:pColor(cell.progress)}}>{cell.progress}%</div>
-                        <div style={{fontSize:7,color:pColor(cell.progress),marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:36,opacity:0.85}}>{cell.name.slice(0,4)}</div>
+                        <div style={{fontSize:10,fontWeight:800,color:pColor(cell.progress)}}>{!isEmpty&&cell.progress+"%"}</div>
+                        <div style={{fontSize:7,color:pColor(cell.progress),marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:36,opacity:0.85}}>{!isEmpty&&cell.name.slice(0,4)}</div>
                       </button>
                     );
                   }))}
