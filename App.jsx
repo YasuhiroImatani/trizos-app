@@ -303,7 +303,7 @@ function CellModal({ cell, onClose, onSave }) {
           "anthropic-dangerous-direct-browser-access":"true"
         },
         body: JSON.stringify({
-          model: "claude-haiku-4-5-20251001",
+          model: "claude-sonnet-4-6",
           max_tokens: 800,
           messages:[{role:"user", content:
             `経営戦略の専門家として以下のセルを日本語で分析してください。200文字以内、箇条書き3点で。\n` +
