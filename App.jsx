@@ -419,9 +419,9 @@ function CellModal({ cell, onClose, onSave }) {
               const filled = val.trim().length > 0;
               return (
                 <div key={k} style={{
-                  background: filled ? C.card : C.card2,
-                  border:`1px solid ${filled ? color+"66" : C.border}`,
-                  borderLeft:`3px solid ${filled ? color : C.muted}`,
+                  background: filled ? C.card : "#ffffff",
+                  border:`1px solid ${filled ? color+"66" : "#e0e0e0"}`,
+                  borderLeft:`3px solid ${filled ? color : "#d0d0d0"}`,
                   borderRadius:12, padding:14, marginBottom:10,
                   boxShadow: filled ? `0 0 12px ${color}18` : "none",
                   transition:"all 0.2s",
@@ -646,6 +646,7 @@ function CompetitorStrip({ competitors, onAdd, onEdit }) {
 // ─── HOME TAB ─────────────────────────────────────────────────────────────────
 function HomeTab({ matrix, onCellClick, competitors, onAddComp, onEditComp }) {
   function cellBg(p) {
+    if(p===0) return {bg:"#ffffff",border:"#e0e0e0"};
     if(p>=70) return {bg:"#1a1f3a",border:"#3a4070"};
     if(p>=40) return {bg:"#1f1a0a",border:"#504010"};
     return {bg:"#1f0f18",border:"#50203a"};
@@ -693,7 +694,7 @@ function HomeTab({ matrix, onCellClick, competitors, onAddComp, onEditComp }) {
                     const isEmpty=cell.progress===0&&!cell.kpi&&!cell.kgi&&!cell.ksf&&!cell.risk&&!cell.next;
                     return (
                       <button key={key} onClick={()=>onCellClick(cell)}
-                        style={{padding:"5px 3px",borderRadius:7,border:`1px solid ${border}`,background:isEmpty?C.card:bg,cursor:"pointer",textAlign:"center",position:"relative"}}>
+                        style={{padding:"5px 3px",borderRadius:7,border:`1px solid ${border}`,background:bg,cursor:"pointer",textAlign:"center",position:"relative"}}>
                         {isAlert&&<span style={{position:"absolute",top:2,right:2,width:5,height:5,borderRadius:"50%",background:C.red,display:"block"}}/>}
                         <div style={{fontSize:10,fontWeight:800,color:pColor(cell.progress)}}>{!isEmpty&&cell.progress+"%"}</div>
                         <div style={{fontSize:7,color:pColor(cell.progress),marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:36,opacity:0.85}}>{!isEmpty&&cell.name.slice(0,4)}</div>
