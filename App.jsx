@@ -685,7 +685,7 @@ function HomeTab({ matrix, onCellClick, competitors, onAddComp, onEditComp }) {
                     <span style={{fontSize:10,fontWeight:800,color:pColor(avg)}}>{avg}%</span>
                   </div>
                 </div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:3}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gridAutoRows:"1fr",gap:3}}>
                   {TYPES.flatMap(t1=>TYPES.map(t2=>{
                     const key=`${row}__${col}__${t1}__${t2}`;
                     const cell=matrix[key]; if(!cell)return null;
@@ -694,10 +694,10 @@ function HomeTab({ matrix, onCellClick, competitors, onAddComp, onEditComp }) {
                     const isEmpty=cell.progress===0&&!cell.kpi&&!cell.kgi&&!cell.ksf&&!cell.risk&&!cell.next;
                     return (
                       <button key={key} onClick={()=>onCellClick(cell)}
-                        style={{padding:0,borderRadius:7,border:`1px solid ${border}`,background:bg,cursor:"pointer",textAlign:"center",position:"relative",aspectRatio:"1",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+                        style={{padding:0,borderRadius:7,border:`1px solid ${border}`,background:bg,cursor:"pointer",textAlign:"center",position:"relative",aspectRatio:"1",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:0}}>
                         {isAlert&&<span style={{position:"absolute",top:2,right:2,width:5,height:5,borderRadius:"50%",background:C.red,display:"block"}}/>}
-                        <div style={{fontSize:10,fontWeight:800,color:pColor(cell.progress)}}>{!isEmpty&&cell.progress+"%"}</div>
-                        <div style={{fontSize:7,color:pColor(cell.progress),marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:36,opacity:0.85}}>{!isEmpty&&cell.name.slice(0,4)}</div>
+                        <div style={{fontSize:10,fontWeight:800,color:isEmpty?"transparent":pColor(cell.progress)}}>{cell.progress+"%"}</div>
+                        <div style={{fontSize:7,color:isEmpty?"transparent":pColor(cell.progress),marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:36,opacity:0.85}}>{cell.name.slice(0,4)}</div>
                       </button>
                     );
                   }))}
