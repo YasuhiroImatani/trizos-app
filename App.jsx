@@ -259,8 +259,8 @@ function CellModal({ cell, onClose, onSave, onOpenPlan, cellPlansIndex, matrix }
   }
 
   return (
-    <div style={{position:"fixed",inset:0,background:"#000b",zIndex:300,overflowY:"auto"}} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",background:C.surface,minHeight:"100vh"}}>
+    <div style={{position:"fixed",inset:0,background:"#000b",zIndex:300,overflow:"hidden"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",background:C.surface,minHeight:"100vh",height:"100%",overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
 
         {/* HEADER */}
         <div style={{padding:"20px 18px 16px",borderBottom:`1px solid ${C.border}`}}>
@@ -953,8 +953,8 @@ function CellPlanModal({ cell, initialPlan, onClose, onSaved, onSavedAndClose, m
   );
 
   return (
-    <div style={{position:"fixed",inset:0,background:"#000c",zIndex:400,overflowY:"auto"}} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",background:C.surface,minHeight:"100vh",paddingBottom:30}}>
+    <div style={{position:"fixed",inset:0,background:"#000c",zIndex:400,overflow:"hidden"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",background:C.surface,minHeight:"100vh",paddingBottom:30,height:"100%",overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
 
         {/* HEADER */}
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:12}}>
