@@ -1,14 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-
 const SUPA_URL = "https://nemmhucubeozvlhncivu.supabase.co";
 const SUPA_KEY = "sb_publishable_z1BlRpR03jJTUNRKiaB1ZQ_avox17xS";
-const AI_KEY_STORAGE  = "triz_ai_key";
-const COMP_STORAGE    = "triz_competitors";
-const BUILT_IN_AI_KEY = import.meta.env.VITE_ANTHROPIC_KEY ?? "";
-
-function getAiKey() {
-  return localStorage.getItem(AI_KEY_STORAGE) || BUILT_IN_AI_KEY;
-}
 
 async function supa(path, method = "GET", body = null) {
   const res = await fetch(`${SUPA_URL}/rest/v1/${path}`, {
@@ -30,37 +22,41 @@ const C = {
   bg: "#0a0a12", surface: "#0f0f1a", card: "#14141f", card2: "#1a1a28",
   border: "#1e1e32", accent: "#6c63ff", accentGlow: "#6c63ff40",
   green: "#00c896", red: "#e84393", yellow: "#c8a830", blue: "#5b6bff",
+    orange: "#FF9500",
   text: "#eeeeff", sub: "#8888aa", muted: "#44445a", purple: "#a07cff",
   teal: "#00e5c8",
 };
 
 function pColor(p) {
-  if (p === 100) return C.green;
-  if (p >= 70) return C.blue;
-  if (p >= 40) return C.yellow;
+    if (p === 100) return C.green;
+    if (p >= 70) return C.blue;
+    if (p >= 40) return C.yellow;
+  if (p >= 1 && p <= 5) return C.orange;
   return C.red;
 }
+
+// Cell background colors based on progress
+function cellBg(p) {
+    if (p >= 1 && p <= 5) return { bg: C.card, border: C.orange };
+    if (p >= 40) return { bg: C.card, border: C.yellow };
+    return { bg: C.card, border: C.red };
+}
+
+// gradient bar colors matching screenshot
 function barGrad(p) {
   if (p >= 70) return `linear-gradient(90deg, #5b6bff, #a07cff)`;
   if (p >= 40) return `linear-gradient(90deg, #6c63ff, #c8a830)`;
+    if (p >= 1 && p <= 5) return `linear-gradient(90deg, #FF9500, #FFA500)`;
   return `linear-gradient(90deg, #6c63ff, #e84393)`;
 }
 
-const ROW_LABELS   = ["独占", "互角", "通常"];
-const COL_LABELS   = ["販売", "本社", "生産"];
-const TYPES        = ["人", "物", "金"];
-const STATUS_LIST  = ["未着手", "準備", "実行", "改善", "完了"];
-const PRIORITY_LIST= ["低", "中", "高"];
-const MEMBER_COLORS= ["#6c63ff","#00c896","#c8a830","#5b6bff","#e84393","#ff9f7c","#a07cff"];
-const COMP_COLORS  = ["#e84393","#c8a830","#00c896","#5b6bff","#a07cff","#ff9f7c","#00e5c8"];
-
-// ─── COMPETITOR STORAGE ───────────────────────────────────────────────────────
-function loadCompetitors() {
-  try { return JSON.parse(localStorage.getItem(COMP_STORAGE) || "[]"); } catch { return []; }
-}
-function saveCompetitors(list) {
-  localStorage.setItem(COMP_STORAGE, JSON.stringify(list));
-}
+const ROW_LABELS = ["独占", "互角", "通常"];
+const COL_LABELS = ["販売", "本社", "生産"];
+const TYPES = ["人", "物", "金"];
+const STATUS_LIST = ["未着手", "準備", "実行", "改善", "完了"];
+const PRIORITY_LIST = ["低", "中", "高"];
+const MEMBER_COLORS = ["#6c63ff","#00c896","#c8a830","#5b6bff","#e84393","#ff9f7c","#a07cff"];
+const PHASE_COLORS = ["#6c63ff","#00c896","#c8a830","#5b6bff","#e84393","#00e5c8","#a07cff","#ff9f7c"];
 
 function buildInitialCells() {
   const cells = {};
@@ -71,7 +67,7 @@ function buildInitialCells() {
       name: `${row}化の${col} ${t1}×${t2}戦略`,
       progress: 0, status: "未着手", priority: "中",
       assignee: "", startDate: "", deadline: "",
-      kpi: "", kgi: "", ksf: "", risk: "", next: "",
+      kpi: "", ksf: "", risk: "", next: "",
       description: `${row}領域における「${col}」の${t1}×${t2}の打ち手。`,
       income: 0, expense: 0, tasks: [],
     };
@@ -100,8 +96,14 @@ async function saveCell(cell) {
       body: JSON.stringify({ key: cell.key, data: cell }),
     });
     const txt = await res.text();
-    if (!res.ok) console.error("saveCell error", res.status, txt);
-  } catch(e) { console.error("saveCell exception", e); }
+    if (!res.ok) {
+      console.error("saveCell error", res.status, txt);
+      alert(`保存エラー (${res.status}): ${txt}`);
+    }
+  } catch(e) {
+    console.error("saveCell exception", e);
+    alert(`保存例外: ${e.message}`);
+  }
 }
 async function loadMembers() {
   try {
@@ -112,6 +114,56 @@ async function loadMembers() {
 }
 async function saveMember(m) { try { await supa("trizos_members","POST",m); } catch {} }
 async function deleteMember(id) { try { await supa(`trizos_members?id=eq.${id}`,"DELETE"); } catch {} }
+
+async function loadGlobalPlan() {
+  try {
+    const rows = await supa("trizos_plan?id=eq.main&select=data");
+    if (rows?.length) return rows[0].data;
+  } catch {}
+  return { projectName: "", startDate: "", endDate: "", phases: [], payments: [] };
+}
+async function saveGlobalPlan(plan) {
+  try { await supa("trizos_plan","POST",{ id:"main", data:plan }); } catch {}
+}
+
+function cellToId(key) {
+  return "c_" + btoa(encodeURIComponent(key)).replace(/\+/g,"-").replace(/\//g,"_").replace(/=/g,"");
+}
+function idToKey(id) {
+  const b = id.slice(2).replace(/-/g,"+").replace(/_/g,"/");
+  const p = b.length%4===0?"":"=".repeat(4-b.length%4);
+  try { return decodeURIComponent(atob(b+p)); } catch { return ""; }
+}
+function lsKey(key) { return `trizos_plan_${key}`; }
+async function loadCellPlansIndex() {
+  const result = new Set();
+  // localStorage（メイン）：キー形式 trizos_plan_<cellKey>
+  for (let i=0; i<localStorage.length; i++) {
+    const k=localStorage.key(i);
+    if (k?.startsWith("trizos_plan_") && k.slice(12).includes("__")) { result.add(k.slice(12)); }
+  }
+  // Supabase（サブ・失敗しても無視）
+  try { const rows=await supa("trizos_plan?select=id"); rows?.filter(r=>r.id.startsWith("c_")).forEach(r=>{const ck=idToKey(r.id);if(ck)result.add(ck);}); } catch {}
+  return result;
+}
+async function loadCellPlan(key) {
+  try { const ls=localStorage.getItem(lsKey(key)); if(ls) return JSON.parse(ls); } catch {}
+  try { const rows=await supa(`trizos_plan?id=eq.${cellToId(key)}&select=data`); if(rows?.length)return rows[0].data; } catch {}
+  return { projectName:"", startDate:"", endDate:"", phases:[], payments:[] };
+}
+async function saveCellPlan(key, plan) {
+  try { localStorage.setItem(lsKey(key), JSON.stringify(plan)); } catch {} // 必ず保存
+  try { await supa("trizos_plan","POST",{id:cellToId(key),data:plan}); } catch {} // サブ
+}
+function savePlan(cellKey, data) {
+  try { localStorage.setItem(lsKey(cellKey), JSON.stringify(data)); } catch {}
+}
+function loadPlan(cellKey) {
+  try { const s = localStorage.getItem(lsKey(cellKey)); return s ? JSON.parse(s) : null; } catch { return null; }
+}
+function hasPlan(cellKey) {
+  try { return !!localStorage.getItem(lsKey(cellKey)); } catch { return false; }
+}
 
 // ─── CIRCLE SVG ───────────────────────────────────────────────────────────────
 function Ring({ pct, size=72, stroke=6 }) {
@@ -131,6 +183,7 @@ function Ring({ pct, size=72, stroke=6 }) {
   );
 }
 
+// ─── BIG RING for DASH ────────────────────────────────────────────────────────
 function BigRing({ pct, size=120 }) {
   const stroke=10, r=(size-stroke*2)/2, circ=2*Math.PI*r, dash=(pct/100)*circ;
   const col = pct>=70?C.yellow:pct>=40?"#c8a830":C.red;
@@ -149,189 +202,62 @@ function BigRing({ pct, size=120 }) {
   );
 }
 
-// ─── TASK SECTION (改善版) ────────────────────────────────────────────────────
+// ─── TASK SECTION ─────────────────────────────────────────────────────────────
 function TaskSection({ tasks, onChange }) {
   const [input, setInput] = useState("");
-  const [dragIdx, setDragIdx] = useState(null);
-  const [overIdx, setOverIdx] = useState(null);
-
-  function addTask() {
-    const t = input.trim();
-    if (!t) return;
-    onChange([...tasks, { id: Date.now()+"", text: t, done: false }]);
-    setInput("");
-  }
-  function toggle(id) { onChange(tasks.map(t => t.id===id ? {...t, done: !t.done} : t)); }
-  function remove(id) { onChange(tasks.filter(t => t.id!==id)); }
-  function editText(id, val) { onChange(tasks.map(t => t.id===id ? {...t, text:val} : t)); }
-  function moveUp(idx) {
-    if (idx===0) return;
-    const a=[...tasks]; [a[idx-1],a[idx]]=[a[idx],a[idx-1]]; onChange(a);
-  }
-  function moveDown(idx) {
-    if (idx===tasks.length-1) return;
-    const a=[...tasks]; [a[idx],a[idx+1]]=[a[idx+1],a[idx]]; onChange(a);
-  }
-
-  // drag & drop
-  function onDragStart(idx) { setDragIdx(idx); }
-  function onDragOver(e, idx) { e.preventDefault(); setOverIdx(idx); }
-  function onDrop(idx) {
-    if (dragIdx===null||dragIdx===idx) { setDragIdx(null); setOverIdx(null); return; }
-    const a=[...tasks];
-    const [moved]=a.splice(dragIdx,1);
-    a.splice(idx,0,moved);
-    onChange(a);
-    setDragIdx(null); setOverIdx(null);
-  }
-
-  const done = tasks.filter(t => t.done).length;
-
+  function addTask() { const t=input.trim(); if(!t)return; onChange([...tasks,{id:Date.now()+"",text:t,done:false}]); setInput(""); }
+  function toggle(id) { onChange(tasks.map(t=>t.id===id?{...t,done:!t.done}:t)); }
+  function remove(id) { onChange(tasks.filter(t=>t.id!==id)); }
+  function editText(id,val) { onChange(tasks.map(t=>t.id===id?{...t,text:val}:t)); }
+  const done=tasks.filter(t=>t.done).length;
   return (
     <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:14,marginBottom:14}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
         <span style={{fontSize:11,fontWeight:700,color:C.sub,letterSpacing:"0.08em",textTransform:"uppercase"}}>タスク</span>
-        {tasks.length>0 && (
-          <span style={{fontSize:11,color:done===tasks.length?C.green:C.sub,fontWeight:700}}>
-            {done}/{tasks.length} 完了
-          </span>
-        )}
+        {tasks.length>0&&<span style={{fontSize:11,color:done===tasks.length?C.green:C.sub}}>{done}/{tasks.length} 完了</span>}
       </div>
-
-      {tasks.map((t, idx) => (
-        <div key={t.id}
-          draggable
-          onDragStart={()=>onDragStart(idx)}
-          onDragOver={e=>onDragOver(e,idx)}
-          onDrop={()=>onDrop(idx)}
-          onDragEnd={()=>{setDragIdx(null);setOverIdx(null);}}
-          style={{
-            display:"flex", alignItems:"center", gap:8,
-            padding:"8px 6px", borderRadius:9, marginBottom:4,
-            background: overIdx===idx ? C.accentGlow : dragIdx===idx ? C.card2 : "transparent",
-            border: `1px solid ${overIdx===idx ? C.accent : "transparent"}`,
-            transition:"background 0.15s",
-          }}>
-          {/* ドラッグハンドル */}
-          <div style={{display:"flex",flexDirection:"column",gap:2,cursor:"grab",flexShrink:0,padding:"0 2px"}}>
-            {[0,1,2].map(i=>(
-              <div key={i} style={{display:"flex",gap:2}}>
-                <div style={{width:3,height:3,borderRadius:"50%",background:C.muted}}/>
-                <div style={{width:3,height:3,borderRadius:"50%",background:C.muted}}/>
-              </div>
-            ))}
-          </div>
-
-          {/* 番号 */}
-          <span style={{fontSize:10,color:C.muted,fontWeight:700,minWidth:16,textAlign:"center",flexShrink:0}}>{idx+1}</span>
-
-          {/* チェック */}
-          <button onClick={()=>toggle(t.id)}
-            style={{width:22,height:22,borderRadius:6,border:`2px solid ${t.done?C.green:C.border}`,background:t.done?C.green+"33":"transparent",cursor:"pointer",flexShrink:0,color:C.green,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}}>
-            {t.done ? "✓" : ""}
+      {tasks.map(t=>(
+        <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderBottom:`1px solid ${C.border}`}}>
+          <button onClick={()=>toggle(t.id)} style={{width:20,height:20,borderRadius:5,border:`2px solid ${t.done?C.green:C.border}`,background:t.done?C.green+"33":"transparent",cursor:"pointer",flexShrink:0,color:C.green,fontSize:11}}>
+            {t.done?"✓":""}
           </button>
-
-          {/* テキスト */}
           <input value={t.text} onChange={e=>editText(t.id,e.target.value)}
             style={{flex:1,background:"none",border:"none",color:t.done?C.muted:C.text,fontSize:13,outline:"none",textDecoration:t.done?"line-through":"none",fontFamily:"inherit"}}/>
-
-          {/* 上下ボタン */}
-          <div style={{display:"flex",flexDirection:"column",gap:1,flexShrink:0}}>
-            <button onClick={()=>moveUp(idx)} disabled={idx===0}
-              style={{background:idx===0?"transparent":C.card2,border:`1px solid ${idx===0?C.border:C.sub}`,color:idx===0?C.muted:C.sub,fontSize:9,cursor:idx===0?"default":"pointer",padding:"2px 5px",borderRadius:4,lineHeight:1,fontWeight:700}}>
-              ▲
-            </button>
-            <button onClick={()=>moveDown(idx)} disabled={idx===tasks.length-1}
-              style={{background:idx===tasks.length-1?"transparent":C.card2,border:`1px solid ${idx===tasks.length-1?C.border:C.sub}`,color:idx===tasks.length-1?C.muted:C.sub,fontSize:9,cursor:idx===tasks.length-1?"default":"pointer",padding:"2px 5px",borderRadius:4,lineHeight:1,fontWeight:700}}>
-              ▼
-            </button>
-          </div>
-
-          <button onClick={()=>remove(t.id)}
-            style={{background:"none",border:"none",color:C.muted,fontSize:16,cursor:"pointer",flexShrink:0,padding:"0 2px"}}>
-            ×
-          </button>
+          <button onClick={()=>remove(t.id)} style={{background:"none",border:"none",color:C.muted,fontSize:16,cursor:"pointer"}}>×</button>
         </div>
       ))}
-
       <div style={{display:"flex",gap:8,marginTop:tasks.length?10:0}}>
-        <input value={input} onChange={e=>setInput(e.target.value)}
-          onKeyDown={e=>e.key==="Enter"&&addTask()}
-          placeholder="タスクを追加... (Enterで追加)"
-          style={{...inp,flex:1,padding:"8px 10px"}}/>
-        <button onClick={addTask}
-          style={{padding:"8px 16px",borderRadius:9,border:"none",background:C.accentGlow,color:C.accent,fontWeight:800,fontSize:15,cursor:"pointer"}}>
-          +
-        </button>
+        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addTask()}
+          placeholder="タスクを追加..." style={{...inp,flex:1,padding:"8px 10px"}}/>
+        <button onClick={addTask} style={{padding:"8px 16px",borderRadius:9,border:"none",background:C.accentGlow,color:C.accent,fontWeight:800,fontSize:15,cursor:"pointer"}}>+</button>
       </div>
-      {tasks.length > 1 && (
-        <div style={{fontSize:10,color:C.muted,marginTop:6,textAlign:"center"}}>
-          ⋮⋮ ドラッグで並び替え可能
-        </div>
-      )}
     </div>
   );
 }
 
 // ─── CELL MODAL ───────────────────────────────────────────────────────────────
-function CellModal({ cell, onClose, onSave }) {
+function CellModal({ cell, onClose, onSave, onOpenPlan, cellPlansIndex, matrix }) {
   const [d, setD] = useState({...cell, tasks: cell.tasks||[]});
   const [editingName, setEditingName] = useState(false);
   const [aiText, setAiText] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
-  const [aiKeyInput, setAiKeyInput] = useState(localStorage.getItem(AI_KEY_STORAGE)||"");
-  const [showKeyInput, setShowKeyInput] = useState(false);
+  const [showPlan, setShowPlan] = useState(false);
   const profit = (d.income||0)-(d.expense||0);
   const nameRef = useRef();
 
-  function saveAiKey() {
-    const k = aiKeyInput.trim();
-    if (k) { localStorage.setItem(AI_KEY_STORAGE, k); setShowKeyInput(false); }
-  }
-
   async function runAI() {
-    const key = getAiKey();
-    if (!key) { setShowKeyInput(true); setAiText("APIキーを設定してください。"); return; }
-    setAiLoading(true); setAiText("");
+    setAiLoading(true);
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method:"POST",
-        headers:{
-          "Content-Type":"application/json",
-          "x-api-key": key,
-          "anthropic-version":"2023-06-01",
-          "anthropic-dangerous-direct-browser-access":"true"
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 800,
-          messages:[{role:"user", content:
-            `経営戦略の専門家として以下のセルを日本語で分析してください。200文字以内、箇条書き3点で。\n` +
-            `セル名:${d.name}\nステータス:${d.status} / 進捗:${d.progress}%\n` +
-            `KPI:${d.kpi||"未設定"} / KGI:${d.kgi||"未設定"} / KSF:${d.ksf||"未設定"}\n` +
-            `リスク:${d.risk||"未設定"}\n` +
-            `売上:¥${(d.income||0).toLocaleString()} / コスト:¥${(d.expense||0).toLocaleString()}\n` +
-            `次のアクション:${d.next||"未設定"}`
-          }]
-        })
+      const res = await fetch("https://api.anthropic.com/v1/messages",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,
+          messages:[{role:"user",content:`経営戦略の専門家として以下を日本語で分析。200文字以内、箇条書き。\nセル:${d.name}\nステータス:${d.status} 進捗:${d.progress}%\nKPI:${d.kpi||"未設定"} KSF:${d.ksf||"未設定"}\nリスク:${d.risk||"未設定"}\n売上:¥${(d.income||0).toLocaleString()} コスト:¥${(d.expense||0).toLocaleString()}\n次:${d.next||"未設定"}`}]})
       });
-      const j = await res.json();
-      if (j.error) throw new Error(j.error.message || JSON.stringify(j.error));
-      setAiText(j.content?.[0]?.text || "分析できませんでした。");
-    } catch(e) {
-      setAiText(`❌ エラー: ${e.message}`);
-    }
+      const j=await res.json();
+      setAiText(j.content?.[0]?.text||"分析できませんでした。");
+    } catch { setAiText("APIエラーが発生しました。"); }
     setAiLoading(false);
   }
-
-  // 5K items definition
-  const K5 = [
-    {k:"kpi",  label:"KPI",  tag:"数値目標",      color:C.blue,   icon:"📊"},
-    {k:"kgi",  label:"KGI",  tag:"最終目標指標",  color:C.teal,   icon:"🎯"},
-    {k:"ksf",  label:"KSF",  tag:"サクセスファクター", color:C.green, icon:"⭐"},
-    {k:"risk", label:"RISK", tag:"リスクファクター",color:C.red,    icon:"⚠️"},
-    {k:"next", label:"NEXT", tag:"次にやる事",     color:C.purple, icon:"▶️"},
-  ];
 
   return (
     <div style={{position:"fixed",inset:0,background:"#000b",zIndex:300,overflowY:"auto"}} onClick={onClose}>
@@ -344,10 +270,8 @@ function CellModal({ cell, onClose, onSave }) {
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontSize:11,color:C.sub,marginBottom:4}}>{d.row} / {d.col} / {d.type1}×{d.type2}</div>
               {editingName
-                ? <input ref={nameRef} autoFocus value={d.name}
-                    onChange={e=>setD(p=>({...p,name:e.target.value}))}
-                    onBlur={()=>setEditingName(false)}
-                    onKeyDown={e=>e.key==="Enter"&&setEditingName(false)}
+                ? <input ref={nameRef} autoFocus value={d.name} onChange={e=>setD(p=>({...p,name:e.target.value}))}
+                    onBlur={()=>setEditingName(false)} onKeyDown={e=>e.key==="Enter"&&setEditingName(false)}
                     style={{...inp,fontSize:17,fontWeight:800,padding:"5px 8px",width:"100%"}}/>
                 : <div onClick={()=>{setEditingName(true);setTimeout(()=>nameRef.current?.focus(),50)}}
                     style={{fontSize:17,fontWeight:800,color:C.text,lineHeight:1.3,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
@@ -385,18 +309,11 @@ function CellModal({ cell, onClose, onSave }) {
 
         {/* BODY */}
         <div style={{padding:18}}>
-
           {/* BASIC */}
           <Sec label="基本情報">
-            <FRow label="担当者">
-              <input value={d.assignee} onChange={e=>setD(p=>({...p,assignee:e.target.value}))} placeholder="担当者名を入力..." style={inp}/>
-            </FRow>
-            <FRow label="開始日">
-              <input type="date" value={d.startDate?.replace(/\//g,"-")} onChange={e=>setD(p=>({...p,startDate:e.target.value}))} style={inp}/>
-            </FRow>
-            <FRow label="期限">
-              <input type="date" value={d.deadline?.replace(/\//g,"-")} onChange={e=>setD(p=>({...p,deadline:e.target.value}))} style={inp}/>
-            </FRow>
+            <FRow label="担当者"><input value={d.assignee} onChange={e=>setD(p=>({...p,assignee:e.target.value}))} placeholder="担当者名を入力..." style={inp}/></FRow>
+            <FRow label="開始日"><input type="date" value={d.startDate?.replace(/\//g,"-")} onChange={e=>setD(p=>({...p,startDate:e.target.value}))} style={inp}/></FRow>
+            <FRow label="期限"><input type="date" value={d.deadline?.replace(/\//g,"-")} onChange={e=>setD(p=>({...p,deadline:e.target.value}))} style={inp}/></FRow>
             <FRow label="優先度">
               <div style={{display:"flex",gap:6}}>
                 {PRIORITY_LIST.map(p=>(
@@ -412,39 +329,20 @@ function CellModal({ cell, onClose, onSave }) {
           {/* TASKS */}
           <TaskSection tasks={d.tasks} onChange={tasks=>setD(p=>({...p,tasks}))}/>
 
-          {/* 5K 戦略項目 (ブラッシュアップ版) */}
-          <Sec label="5K 戦略項目">
-            {K5.map(({k, label, tag, color, icon})=>{
-              const val = d[k]||"";
-              const filled = val.trim().length > 0;
+          {/* 4K */}
+          <Sec label="4K 戦略項目">
+            {[{k:"kpi",label:"KPI",tag:"数値目標",color:C.blue},{k:"ksf",label:"KSF",tag:"サクセスファクター",color:C.green},{k:"risk",label:"RISK",tag:"リスクファクター",color:C.red},{k:"next",label:"NEXT",tag:"次にやる事",color:C.purple}].map(({k,label,tag,color})=>{
+              const filled = d[k]?.trim().length > 0;
               return (
-                <div key={k} style={{
-                  background: filled ? C.card : "#ffffff",
-                  border:`1px solid ${filled ? color+"66" : "#e0e0e0"}`,
-                  borderLeft:`3px solid ${filled ? color : "#d0d0d0"}`,
-                  borderRadius:12, padding:14, marginBottom:10,
-                  boxShadow: filled ? `0 0 12px ${color}18` : "none",
-                  transition:"all 0.2s",
-                }}>
-                  <div style={{display:"flex",gap:8,marginBottom:8,alignItems:"center",justifyContent:"space-between"}}>
-                    <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                      <span style={{fontSize:14}}>{icon}</span>
-                      <span style={{fontSize:12,fontWeight:800,color: filled ? color : C.muted,letterSpacing:"0.06em"}}>{label}</span>
-                      <span style={{fontSize:10,color:C.muted,background:C.card2,padding:"2px 8px",borderRadius:20}}>{tag}</span>
-                    </div>
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      {filled && <span style={{width:7,height:7,borderRadius:"50%",background:color,boxShadow:`0 0 6px ${color}`,display:"inline-block"}}/>}
-                      <span style={{fontSize:10,color:C.muted}}>{val.length}字</span>
-                    </div>
-                  </div>
-                  <textarea value={val} onChange={e=>setD(p=>({...p,[k]:e.target.value}))}
-                    rows={2} placeholder={`${label}を入力...`}
-                    style={{...inp,resize:"vertical",fontFamily:"inherit",
-                      borderColor: filled ? color+"44" : C.border,
-                      boxShadow: filled ? `inset 0 0 0 1px ${color}22` : "none"
-                    }}/>
+              <div key={k} style={{background:filled ? C.card : "#ffffff",border:`1px solid ${filled ? color+"66" : "#e0e0e0"}`,borderLeft:`3px solid ${filled ? color : "#d0d0d0"}`,borderRadius:12,padding:14,marginBottom:10}}>
+                <div style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
+                  <span style={{fontSize:11,fontWeight:800,color:filled ? color : C.muted,letterSpacing:"0.06em"}}>{label}</span>
+                  <span style={{fontSize:10,color:C.muted}}>{tag}</span>
                 </div>
-              );
+                <textarea value={d[k]} onChange={e=>setD(p=>({...p,[k]:e.target.value}))}
+                  rows={2} placeholder={`${label}を入力...`} style={{...inp,resize:"none",fontFamily:"inherit"}}/>
+              </div>
+            );
             })}
           </Sec>
 
@@ -470,53 +368,36 @@ function CellModal({ cell, onClose, onSave }) {
             </div>
           </Sec>
 
-          {/* AI 戦略分析 (修正版) */}
+          {/* AI */}
           <Sec label="AI 戦略分析">
-            {/* APIキー設定 */}
-            {showKeyInput && (
-              <div style={{background:C.card2,border:`1px solid ${C.yellow}44`,borderRadius:12,padding:14,marginBottom:12}}>
-                <div style={{fontSize:11,color:C.yellow,fontWeight:700,marginBottom:8}}>⚙️ Anthropic APIキーを設定</div>
-                <div style={{display:"flex",gap:8}}>
-                  <input
-                    type="password"
-                    value={aiKeyInput}
-                    onChange={e=>setAiKeyInput(e.target.value)}
-                    onKeyDown={e=>e.key==="Enter"&&saveAiKey()}
-                    placeholder="sk-ant-..."
-                    style={{...inp,flex:1,fontSize:12}}/>
-                  <button onClick={saveAiKey}
-                    style={{padding:"8px 14px",borderRadius:9,border:"none",background:C.accent,color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
-                    保存
-                  </button>
-                </div>
-                <div style={{fontSize:10,color:C.muted,marginTop:6}}>console.anthropic.com で取得。ブラウザに保存されます。</div>
-              </div>
-            )}
-
             <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:16,marginBottom:12}}>
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
                 <div style={{width:32,height:32,borderRadius:9,background:C.accentGlow,border:`1px solid ${C.accent}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>✦</div>
-                <div style={{flex:1}}>
+                <div>
                   <div style={{fontSize:13,fontWeight:700,color:C.text}}>AI 戦略分析</div>
-                  <div style={{fontSize:10,color:C.muted}}>Claude による経営アドバイス</div>
+                  <div style={{fontSize:10,color:C.muted}}>経営の脳によるレビュー</div>
                 </div>
-                {!showKeyInput && (
-                  <button onClick={()=>setShowKeyInput(true)}
-                    style={{background:"none",border:`1px solid ${C.border}`,borderRadius:8,color:C.muted,fontSize:10,cursor:"pointer",padding:"4px 8px"}}>
-                    🔑 キー
-                  </button>
-                )}
+                <div style={{flex:1,height:60,borderRadius:8,background:`radial-gradient(ellipse at 100% 50%, ${C.accentGlow} 0%, transparent 70%)`}}/>
               </div>
               {aiText
-                ? <div style={{fontSize:12,color:aiText.startsWith("❌")?C.red:C.sub,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{aiText}</div>
+                ? <div style={{fontSize:12,color:C.sub,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{aiText}</div>
                 : <div style={{fontSize:12,color:C.muted,fontStyle:"italic"}}>ボタンを押してAI分析を実行...</div>
               }
             </div>
             <button onClick={runAI} disabled={aiLoading}
               style={{width:"100%",padding:"12px 0",borderRadius:11,border:`1px solid ${C.accent}`,background:aiLoading?C.card:C.accentGlow,color:C.accent,fontWeight:700,fontSize:13,cursor:aiLoading?"not-allowed":"pointer"}}>
-              {aiLoading ? "✦ 分析中..." : "✦ AI分析を実行"}
+              {aiLoading?"分析中...":"✦ AI分析を実行"}
             </button>
           </Sec>
+
+          <button onClick={()=>setShowPlan(true)}
+            style={{width:"100%",padding:"13px 0",borderRadius:13,border:`1px solid ${hasPlan(d.key)?C.teal:C.accent}`,
+              background:hasPlan(d.key)?C.teal+"22":C.accentGlow,
+              color:hasPlan(d.key)?C.teal:C.accent,fontWeight:800,fontSize:14,cursor:"pointer",marginTop:6,marginBottom:8}}>
+            📋 4K計画書を{hasPlan(d.key)?"確認・編集":"作成"}
+          </button>
+          {showPlan&&<CellPlanModal cell={d} matrix={matrix} onClose={()=>setShowPlan(false)}
+            onSaved={cellKey=>{}} onSavedAndClose={()=>setShowPlan(false)}/>}
 
           <button onClick={()=>{onSave(d);onClose();}}
             style={{width:"100%",padding:"15px 0",borderRadius:13,border:"none",background:`linear-gradient(135deg,${C.accent},${C.purple})`,color:"#fff",fontWeight:800,fontSize:15,cursor:"pointer",marginTop:6}}>
@@ -528,123 +409,23 @@ function CellModal({ cell, onClose, onSave }) {
   );
 }
 
-// ─── COMPETITOR MODAL ─────────────────────────────────────────────────────────
-function CompetitorModal({ comp, onClose, onSave, onDelete }) {
-  const [d, setD] = useState({...comp});
-  const isNew = !comp.id;
-
-  function handleSave() {
-    const c = { ...d, id: d.id || Date.now()+"" };
-    onSave(c);
-    onClose();
-  }
-
-  return (
-    <div style={{position:"fixed",inset:0,background:"#000c",zIndex:400,overflowY:"auto"}} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()}
-        style={{width:"100%",maxWidth:430,margin:"0 auto",background:C.surface,minHeight:"100vh",padding:20}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-          <div style={{fontSize:15,fontWeight:900,color:C.text}}>
-            {isNew ? "競合他社を追加" : "競合他社 編集"}
-          </div>
-          <button onClick={onClose} style={{background:C.card,border:`1px solid ${C.border}`,color:C.sub,borderRadius:"50%",width:34,height:34,cursor:"pointer",fontSize:16}}>✕</button>
-        </div>
-
-        {/* 色選択 */}
-        <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
-          {COMP_COLORS.map(col=>(
-            <div key={col} onClick={()=>setD(p=>({...p,color:col}))}
-              style={{width:28,height:28,borderRadius:8,background:col,cursor:"pointer",border:d.color===col?`2px solid ${C.text}`:"2px solid transparent",boxShadow:d.color===col?`0 0 8px ${col}`:"none"}}/>
-          ))}
-        </div>
-
-        <Sec label="基本情報">
-          <FRow label="会社名">
-            <input value={d.name||""} onChange={e=>setD(p=>({...p,name:e.target.value}))} placeholder="競合他社名" style={inp}/>
-          </FRow>
-          <FRow label="業種">
-            <input value={d.industry||""} onChange={e=>setD(p=>({...p,industry:e.target.value}))} placeholder="例：民泊・ホテル業" style={inp}/>
-          </FRow>
-          <FRow label="市場シェア">
-            <input value={d.share||""} onChange={e=>setD(p=>({...p,share:e.target.value}))} placeholder="例：15%" style={inp}/>
-          </FRow>
-        </Sec>
-
-        {[
-          {k:"overview",  label:"🏢 概要",     tag:"会社の説明・特徴",   rows:3},
-          {k:"strengths", label:"💪 強み",     tag:"競合の強い点",       rows:3},
-          {k:"weaknesses",label:"⚠️ 弱み",    tag:"競合の弱い点・隙間", rows:3},
-          {k:"strategy",  label:"🎯 戦略",     tag:"競合の主な戦略",     rows:2},
-          {k:"notes",     label:"📝 メモ",     tag:"その他の気づき",     rows:3},
-        ].map(({k,label,tag,rows})=>(
-          <div key={k} style={{marginBottom:14}}>
-            <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
-              <span style={{fontSize:12,fontWeight:700,color:C.text}}>{label}</span>
-              <span style={{fontSize:10,color:C.muted}}>{tag}</span>
-            </div>
-            <textarea value={d[k]||""} onChange={e=>setD(p=>({...p,[k]:e.target.value}))}
-              rows={rows} style={{...inp,resize:"none",fontFamily:"inherit"}}/>
-          </div>
-        ))}
-
-        <div style={{display:"flex",gap:10,marginTop:20}}>
-          <button onClick={handleSave}
-            style={{flex:3,padding:"14px 0",borderRadius:13,border:"none",background:`linear-gradient(135deg,${d.color||C.accent},${C.purple})`,color:"#fff",fontWeight:800,fontSize:14,cursor:"pointer"}}>
-            {isNew?"追加する":"更新する"}
-          </button>
-          {!isNew && (
-            <button onClick={()=>{onDelete(d.id);onClose();}}
-              style={{flex:1,padding:"14px 0",borderRadius:13,border:`1px solid ${C.red}44`,background:"transparent",color:C.red,fontWeight:700,fontSize:13,cursor:"pointer"}}>
-              削除
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+function Sec({label,children}) {
+  return <div style={{marginBottom:22}}>
+    <div style={{fontSize:11,color:C.sub,letterSpacing:"0.08em",marginBottom:12,textTransform:"uppercase",fontWeight:700}}>{label}</div>
+    {children}
+  </div>;
 }
-
-// ─── COMPETITOR STRIP (HOME上部) ──────────────────────────────────────────────
-function CompetitorStrip({ competitors, onAdd, onEdit }) {
-  return (
-    <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:13,padding:12,marginBottom:10}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-        <span style={{fontSize:10,fontWeight:700,color:C.sub,letterSpacing:"0.08em",textTransform:"uppercase"}}>
-          競合他社
-        </span>
-        <button onClick={onAdd}
-          style={{fontSize:11,color:C.accent,background:C.accentGlow,border:`1px solid ${C.accent}44`,borderRadius:20,padding:"3px 12px",cursor:"pointer",fontWeight:700}}>
-          + 追加
-        </button>
-      </div>
-
-      {competitors.length === 0 ? (
-        <div style={{fontSize:11,color:C.muted,textAlign:"center",padding:"6px 0"}}>
-          競合他社を登録してください
-        </div>
-      ) : (
-        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-          {competitors.map(c=>(
-            <button key={c.id} onClick={()=>onEdit(c)}
-              style={{
-                display:"flex",alignItems:"center",gap:6,
-                background: c.color+"18",
-                border:`1px solid ${c.color}44`,
-                borderRadius:20, padding:"5px 12px", cursor:"pointer",
-              }}>
-              <span style={{width:8,height:8,borderRadius:"50%",background:c.color,boxShadow:`0 0 6px ${c.color}`,flexShrink:0}}/>
-              <span style={{fontSize:12,fontWeight:700,color:c.color}}>{c.name}</span>
-              {c.share && <span style={{fontSize:10,color:C.muted}}>{c.share}</span>}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+function FRow({label,children}) {
+  return <div style={{display:"flex",alignItems:"center",marginBottom:12,gap:14}}>
+    <div style={{fontSize:13,color:C.sub,minWidth:58,flexShrink:0}}>{label}</div>
+    <div style={{flex:1}}>{children}</div>
+  </div>;
 }
+const inp = {width:"100%",background:C.card2,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 13px",color:C.text,fontSize:13,boxSizing:"border-box",outline:"none"};
 
 // ─── HOME TAB ─────────────────────────────────────────────────────────────────
-function HomeTab({ matrix, onCellClick, competitors, onAddComp, onEditComp }) {
+function HomeTab({ matrix, onCellClick, cellPlansIndex }) {
+  // cell color based on progress
   function cellBg(p) {
     if(p===0) return {bg:"#ffffff",border:"#e0e0e0"};
     if(p>=70) return {bg:"#1a1f3a",border:"#3a4070"};
@@ -654,13 +435,12 @@ function HomeTab({ matrix, onCellClick, competitors, onAddComp, onEditComp }) {
 
   return (
     <div>
-      {/* 競合他社ストリップ */}
-      <CompetitorStrip competitors={competitors} onAdd={onAddComp} onEdit={onEditComp}/>
-
-      {/* Column headers */}
+      {/* Column headers — 大枠グリッドと完全同期 */}
       <div style={{display:"flex",gap:6,marginBottom:6,paddingLeft:34}}>
         {COL_LABELS.map(c=>(
-          <div key={c} style={{flex:1,textAlign:"center",fontSize:13,fontWeight:700,color:C.sub,padding:"4px 0"}}>{c}</div>
+          <div key={c} style={{flex:1,textAlign:"center",fontSize:13,fontWeight:700,color:C.sub,padding:"4px 0"}}>
+            {c}
+          </div>
         ))}
       </div>
 
@@ -675,6 +455,7 @@ function HomeTab({ matrix, onCellClick, competitors, onAddComp, onEditComp }) {
             const alerts=cells.filter(c=>c.priority==="高"&&c.progress<50).length;
             return (
               <div key={col} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:13,padding:8}}>
+                {/* group header */}
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
                   <span style={{fontSize:9,color:C.muted,fontWeight:600}}>{row}-{col}</span>
                   <div style={{display:"flex",gap:5,alignItems:"center"}}>
@@ -685,19 +466,20 @@ function HomeTab({ matrix, onCellClick, competitors, onAddComp, onEditComp }) {
                     <span style={{fontSize:10,fontWeight:800,color:pColor(avg)}}>{avg}%</span>
                   </div>
                 </div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gridAutoRows:"1fr",gap:3}}>
+                {/* 3x3 grid */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:3}}>
                   {TYPES.flatMap(t1=>TYPES.map(t2=>{
                     const key=`${row}__${col}__${t1}__${t2}`;
                     const cell=matrix[key]; if(!cell)return null;
                     const {bg,border}=cellBg(cell.progress);
                     const isAlert=cell.priority==="高"&&cell.progress<50;
-                    const isEmpty=cell.progress===0&&!cell.kpi&&!cell.kgi&&!cell.ksf&&!cell.risk&&!cell.next;
                     return (
                       <button key={key} onClick={()=>onCellClick(cell)}
-                        style={{padding:0,borderRadius:7,border:`1px solid ${border}`,background:bg,cursor:"pointer",textAlign:"center",position:"relative",aspectRatio:"1",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:0}}>
+                        style={{padding:"5px 3px",borderRadius:7,border:`1px solid ${border}`,background:bg,cursor:"pointer",textAlign:"center",position:"relative"}}>
                         {isAlert&&<span style={{position:"absolute",top:2,right:2,width:5,height:5,borderRadius:"50%",background:C.red,display:"block"}}/>}
-                        <div style={{fontSize:10,fontWeight:800,color:isEmpty?"transparent":pColor(cell.progress)}}>{cell.progress+"%"}</div>
-                        <div style={{fontSize:7,color:isEmpty?"transparent":pColor(cell.progress),marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:36,opacity:0.85}}>{cell.name.slice(0,4)}</div>
+                        {cellPlansIndex?.has(key)&&<span style={{position:"absolute",bottom:2,left:2,width:5,height:5,borderRadius:"50%",background:C.teal,display:"block",boxShadow:`0 0 4px ${C.teal}`}}/>}
+                        <div style={{fontSize:10,fontWeight:800,color:cell.progress===0?"#cccccc":pColor(cell.progress)}}>{cell.progress}%</div>
+                        <div style={{fontSize:7,color:cell.progress===0?"#cccccc":pColor(cell.progress),marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:36,opacity:0.85}}>{cell.name.slice(0,4)}</div>
                       </button>
                     );
                   }))}
@@ -737,6 +519,7 @@ function DashTab({ matrix, members }) {
   const totalEx=cells.reduce((a,c)=>a+(c.expense||0),0);
   const profit=totalIn-totalEx;
 
+  // by owner
   const ownerStats=members.map(m=>{
     const oc=cells.filter(c=>c.assignee===m.name);
     const avg=oc.length?Math.round(oc.reduce((a,c)=>a+c.progress,0)/oc.length):0;
@@ -744,6 +527,7 @@ function DashTab({ matrix, members }) {
     return {...m,count:oc.length,avg,profit:prf};
   }).filter(m=>m.count>0).sort((a,b)=>b.count-a.count);
 
+  // by section
   const secStats=ROW_LABELS.flatMap(row=>COL_LABELS.map(col=>{
     const sc=cells.filter(c=>c.row===row&&c.col===col);
     const avg=Math.round(sc.reduce((a,c)=>a+c.progress,0)/sc.length);
@@ -752,6 +536,7 @@ function DashTab({ matrix, members }) {
 
   return (
     <div>
+      {/* OVERALL card */}
       <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:20,marginBottom:12,position:"relative",overflow:"hidden"}}>
         <div style={{position:"absolute",top:0,right:0,width:120,height:120,background:`radial-gradient(circle at 80% 20%, ${C.accentGlow} 0%, transparent 70%)`}}/>
         <div style={{display:"flex",alignItems:"center",gap:20}}>
@@ -772,6 +557,7 @@ function DashTab({ matrix, members }) {
         </div>
       </div>
 
+      {/* PROFIT */}
       <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:16,marginBottom:12}}>
         <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:12,fontWeight:700}}>PROFIT</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
@@ -784,6 +570,7 @@ function DashTab({ matrix, members }) {
         </div>
       </div>
 
+      {/* BY OWNER */}
       {ownerStats.length>0&&(
         <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:16,marginBottom:12}}>
           <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:14,fontWeight:700}}>BY OWNER</div>
@@ -804,6 +591,7 @@ function DashTab({ matrix, members }) {
         </div>
       )}
 
+      {/* BY SECTION */}
       <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:16}}>
         <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:14,fontWeight:700}}>BY SECTION</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
@@ -831,6 +619,7 @@ function RoadTab({ matrix }) {
 
   return (
     <div>
+      {/* Filter pills */}
       <div style={{display:"flex",gap:8,marginBottom:16}}>
         {FILTERS.map(f=>(
           <button key={f} onClick={()=>setFilter(f)}
@@ -839,12 +628,15 @@ function RoadTab({ matrix }) {
           </button>
         ))}
       </div>
+
+      {/* Header row */}
       <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"8px 14px",marginBottom:8,display:"grid",gridTemplateColumns:"110px 1fr",gap:8}}>
         <div style={{fontSize:11,color:C.sub}}>担当 / 案件</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)"}}>
           {MONTHS.map(m=><div key={m} style={{fontSize:10,color:C.sub,textAlign:"center"}}>{m}</div>)}
         </div>
       </div>
+
       {cells.slice(0,30).map(cell=>{
         const col2=pColor(cell.progress);
         const barEnd=Math.max(1,Math.round(cell.progress/17));
@@ -882,10 +674,12 @@ function TeamTab({ members, setMembers, matrix }) {
     await saveMember(m); setMembers(prev=>[...prev,m]); setName("");
   }
   async function remove(id) { await deleteMember(id); setMembers(prev=>prev.filter(m=>m.id!==id)); }
+
   const cells=Object.values(matrix);
 
   return (
     <div>
+      {/* Add member */}
       <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:16,marginBottom:16}}>
         <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:12,fontWeight:700}}>ADD MEMBER</div>
         <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:8}}>
@@ -932,6 +726,342 @@ function TeamTab({ members, setMembers, matrix }) {
   );
 }
 
+// ─── PLAN TAB ─────────────────────────────────────────────────────────────────
+function PlanTab({ plan, setPlan }) {
+  const [saving, setSaving] = useState(false);
+
+  function upProj(field, val) { setPlan(p => ({ ...p, [field]: val })); }
+
+  function addPhase() {
+    const idx = (plan.phases||[]).length;
+    setPlan(p => ({ ...p, phases: [...(p.phases||[]), {
+      id: Date.now()+"", name: "新フェーズ",
+      start: p.startDate||"", end: p.endDate||"",
+      color: PHASE_COLORS[idx % PHASE_COLORS.length]
+    }]}));
+  }
+  function upPhase(id, field, val) {
+    setPlan(p => ({ ...p, phases: p.phases.map(ph => ph.id===id ? {...ph,[field]:val} : ph) }));
+  }
+  function rmPhase(id) { setPlan(p => ({ ...p, phases: p.phases.filter(ph => ph.id!==id) })); }
+
+  function addPayment() {
+    setPlan(p => ({ ...p, payments: [...(p.payments||[]), { id:Date.now()+"", date:"", amount:0, item:"", memo:"" }]}));
+  }
+  function upPayment(id, field, val) {
+    setPlan(p => ({ ...p, payments: p.payments.map(py => py.id===id ? {...py,[field]:val} : py) }));
+  }
+  function rmPayment(id) { setPlan(p => ({ ...p, payments: p.payments.filter(py => py.id!==id) })); }
+
+  async function handleSave() {
+    setSaving(true);
+    await saveGlobalPlan(plan);
+    setSaving(false);
+  }
+
+  const phases   = plan.phases   || [];
+  const payments = plan.payments || [];
+  const totalPay = payments.reduce((a,p) => a + (parseInt(p.amount)||0), 0);
+
+  const projStart = plan.startDate ? new Date(plan.startDate) : null;
+  const projEnd   = plan.endDate   ? new Date(plan.endDate)   : null;
+  const projDays  = projStart && projEnd ? (projEnd - projStart) / 86400000 : 0;
+
+  function phaseBar(ph) {
+    if (!projStart || !projDays || !ph.start || !ph.end) return null;
+    const s = new Date(ph.start), e = new Date(ph.end);
+    const left  = Math.max(0, Math.min(100, (s - projStart) / 86400000 / projDays * 100));
+    const width = Math.max(2, Math.min(100 - left, (e - s) / 86400000 / projDays * 100));
+    return { left, width };
+  }
+
+  const cellInput = { ...inp, padding:"6px 8px", fontSize:12 };
+
+  return (
+    <div>
+      {/* PROJECT INFO */}
+      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:16,marginBottom:12}}>
+        <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:12,fontWeight:700}}>PROJECT INFO</div>
+        <div style={{marginBottom:10}}>
+          <div style={{fontSize:11,color:C.sub,marginBottom:5}}>プロジェクト名</div>
+          <input value={plan.projectName||""} onChange={e=>upProj("projectName",e.target.value)}
+            placeholder="プロジェクト名を入力..." style={inp}/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <div>
+            <div style={{fontSize:11,color:C.sub,marginBottom:5}}>開始日</div>
+            <input type="date" value={plan.startDate||""} onChange={e=>upProj("startDate",e.target.value)} style={inp}/>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:C.sub,marginBottom:5}}>終了日</div>
+            <input type="date" value={plan.endDate||""} onChange={e=>upProj("endDate",e.target.value)} style={inp}/>
+          </div>
+        </div>
+      </div>
+
+      {/* TIMELINE */}
+      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:16,marginBottom:12}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",fontWeight:700}}>TIMELINE</div>
+          <button onClick={addPhase} style={{padding:"6px 14px",borderRadius:20,border:`1px solid ${C.accent}`,background:C.accentGlow,color:C.accent,fontSize:11,fontWeight:700,cursor:"pointer"}}>+ フェーズ追加</button>
+        </div>
+
+        {/* Scale bar */}
+        {projStart && projEnd && projDays > 0 && (
+          <div style={{background:C.card2,border:`1px solid ${C.border}`,borderRadius:7,height:20,position:"relative",overflow:"hidden",marginBottom:10,display:"flex",alignItems:"center",padding:"0 8px"}}>
+            <span style={{fontSize:9,color:C.muted}}>{plan.startDate}</span>
+            <span style={{fontSize:9,color:C.muted,marginLeft:"auto"}}>{plan.endDate}</span>
+          </div>
+        )}
+
+        {phases.length===0 && (
+          <div style={{textAlign:"center",color:C.muted,fontSize:12,padding:"18px 0"}}>フェーズを追加してください</div>
+        )}
+
+        {phases.map(ph => {
+          const bar = phaseBar(ph);
+          return (
+            <div key={ph.id} style={{marginBottom:14}}>
+              <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:5}}>
+                <div style={{width:12,height:12,borderRadius:3,background:ph.color,flexShrink:0,cursor:"pointer"}}
+                  onClick={()=>upPhase(ph.id,"color",PHASE_COLORS[(PHASE_COLORS.indexOf(ph.color)+1)%PHASE_COLORS.length])}/>
+                <input value={ph.name} onChange={e=>upPhase(ph.id,"name",e.target.value)}
+                  style={{...cellInput,flex:1,fontWeight:700}}/>
+                <button onClick={()=>rmPhase(ph.id)} style={{background:"none",border:"none",color:C.muted,fontSize:16,cursor:"pointer",padding:0}}>×</button>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:5}}>
+                <input type="date" value={ph.start||""} onChange={e=>upPhase(ph.id,"start",e.target.value)} style={cellInput}/>
+                <input type="date" value={ph.end||""}   onChange={e=>upPhase(ph.id,"end",  e.target.value)} style={cellInput}/>
+              </div>
+              <div style={{background:C.card2,borderRadius:6,height:18,position:"relative",overflow:"hidden"}}>
+                {bar && <div style={{position:"absolute",top:2,bottom:2,left:`${bar.left}%`,width:`${bar.width}%`,background:ph.color,borderRadius:4,opacity:0.85,display:"flex",alignItems:"center",paddingLeft:4,overflow:"hidden"}}>
+                  <span style={{fontSize:9,color:"#fff",fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{ph.name}</span>
+                </div>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* PAYMENT SCHEDULE */}
+      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:16,marginBottom:12}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",fontWeight:700}}>支払いスケジュール</div>
+          <button onClick={addPayment} style={{padding:"6px 14px",borderRadius:20,border:`1px solid ${C.green}`,background:C.green+"22",color:C.green,fontSize:11,fontWeight:700,cursor:"pointer"}}>+ 追加</button>
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:"88px 76px 1fr 1fr 20px",gap:4,marginBottom:6}}>
+          {["日付","金額","項目","メモ",""].map(h=>(
+            <div key={h} style={{fontSize:9,color:C.muted,fontWeight:700,paddingLeft:2}}>{h}</div>
+          ))}
+        </div>
+
+        {payments.length===0 && (
+          <div style={{textAlign:"center",color:C.muted,fontSize:12,padding:"12px 0"}}>支払いを追加してください</div>
+        )}
+
+        {payments.map(py=>(
+          <div key={py.id} style={{display:"grid",gridTemplateColumns:"88px 76px 1fr 1fr 20px",gap:4,marginBottom:6,alignItems:"center"}}>
+            <input type="date" value={py.date||""} onChange={e=>upPayment(py.id,"date",e.target.value)} style={{...cellInput,padding:"5px 5px",fontSize:11}}/>
+            <input type="number" value={py.amount||""} onChange={e=>upPayment(py.id,"amount",parseInt(e.target.value)||0)} placeholder="0" style={{...cellInput,padding:"5px 5px",fontSize:11}}/>
+            <input value={py.item||""} onChange={e=>upPayment(py.id,"item",e.target.value)} placeholder="項目" style={{...cellInput,padding:"5px 5px",fontSize:11}}/>
+            <input value={py.memo||""} onChange={e=>upPayment(py.id,"memo",e.target.value)} placeholder="メモ" style={{...cellInput,padding:"5px 5px",fontSize:11}}/>
+            <button onClick={()=>rmPayment(py.id)} style={{background:"none",border:"none",color:C.muted,fontSize:16,cursor:"pointer",padding:0,lineHeight:1}}>×</button>
+          </div>
+        ))}
+
+        {payments.length>0&&(
+          <div style={{borderTop:`1px solid ${C.border}`,paddingTop:10,marginTop:4,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontSize:12,color:C.sub,fontWeight:700}}>合計</span>
+            <span style={{fontSize:18,fontWeight:900,color:C.teal}}>¥{totalPay.toLocaleString()}</span>
+          </div>
+        )}
+      </div>
+
+      <button onClick={handleSave} disabled={saving}
+        style={{width:"100%",padding:"14px 0",borderRadius:13,border:"none",background:`linear-gradient(135deg,${C.accent},${C.purple})`,color:"#fff",fontWeight:800,fontSize:15,cursor:saving?"not-allowed":"pointer",opacity:saving?0.7:1}}>
+        {saving ? "保存中..." : "計画書を保存"}
+      </button>
+    </div>
+  );
+}
+
+// ─── CELL PLAN MODAL ──────────────────────────────────────────────────────────
+function CellPlanModal({ cell, initialPlan, onClose, onSaved, onSavedAndClose, matrix }) {
+  const [plan, setPlan] = useState(initialPlan || { projectName:"", startDate:"", endDate:"", phases:[], payments:[] });
+  const [saving, setSaving] = useState(false);
+  const [ok, setOk] = useState(false);
+  const [planLoading, setPlanLoading] = useState(!initialPlan);
+  useEffect(()=>{
+    if(!initialPlan){ loadCellPlan(cell.key).then(p=>{setPlan(p);setPlanLoading(false);}); }
+  },[]);
+
+  // 空文字のみ除外（デフォルト名も含める）
+  const cellOptions = Object.values(matrix||{})
+    .filter(c => c.name.trim())
+    .map(c => c.name)
+    .filter((v,i,a) => a.indexOf(v)===i); // 重複排除
+
+  const allKnownNames = new Set([cell.name, ...cellOptions]);
+  const [useCustom, setUseCustom] = useState(
+    !!initialPlan.projectName && !allKnownNames.has(initialPlan.projectName)
+  );
+
+  function handleSelect(val) {
+    if (val === "__custom__") { setUseCustom(true); upP("projectName",""); }
+    else { setUseCustom(false); upP("projectName", val); }
+  }
+
+  function upP(f,v){setPlan(p=>({...p,[f]:v}));}
+  function addPhase(){const i=(plan.phases||[]).length;setPlan(p=>({...p,phases:[...(p.phases||[]),{id:Date.now()+"",name:"新フェーズ",start:p.startDate||"",end:p.endDate||"",color:PHASE_COLORS[i%PHASE_COLORS.length]}]}));}
+  function upPh(id,f,v){setPlan(p=>({...p,phases:p.phases.map(ph=>ph.id===id?{...ph,[f]:v}:ph)}));}
+  function rmPh(id){setPlan(p=>({...p,phases:p.phases.filter(ph=>ph.id!==id)}));}
+  function addPay(){setPlan(p=>({...p,payments:[...(p.payments||[]),{id:Date.now()+"",date:"",amount:0,item:"",memo:""}]}));}
+  function upPay(id,f,v){setPlan(p=>({...p,payments:p.payments.map(py=>py.id===id?{...py,[f]:v}:py)}));}
+  function rmPay(id){setPlan(p=>({...p,payments:p.payments.filter(py=>py.id!==id)}));}
+
+  async function handleSave(){
+    setSaving(true);
+    await saveCellPlan(cell.key,plan);
+    setSaving(false); setOk(true);
+    if(onSaved) onSaved(cell.key);
+    setTimeout(()=>{setOk(false);if(onSavedAndClose)onSavedAndClose();else onClose();},1500);
+  }
+
+  const phases=plan.phases||[], payments=plan.payments||[];
+  const total=payments.reduce((a,p)=>a+(parseInt(p.amount)||0),0);
+  const pS=plan.startDate?new Date(plan.startDate):null, pE=plan.endDate?new Date(plan.endDate):null;
+  const pD=pS&&pE?(pE-pS)/86400000:0;
+  function bar(ph){
+    if(!pS||!pD||!ph.start||!ph.end)return null;
+    const s=new Date(ph.start),e=new Date(ph.end);
+    const l=Math.max(0,Math.min(100,(s-pS)/86400000/pD*100));
+    const w=Math.max(2,Math.min(100-l,(e-s)/86400000/pD*100));
+    return{l,w};
+  }
+  const ci={...inp,padding:"6px 8px",fontSize:12};
+
+  if(planLoading) return (
+    <div style={{position:"fixed",inset:0,background:"#000c",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
+      <div style={{color:C.accent,fontSize:14,fontWeight:700}}>読み込み中...</div>
+    </div>
+  );
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"#000c",zIndex:400,overflowY:"auto"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",background:C.surface,minHeight:"100vh",paddingBottom:30}}>
+
+        {/* HEADER */}
+        <div style={{padding:"16px 18px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:12}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:11,color:C.teal,fontWeight:700,letterSpacing:"0.1em"}}>4K計画書</div>
+            <div style={{fontSize:15,fontWeight:800,color:C.text,marginTop:3}}>{cell.name}</div>
+            <div style={{fontSize:10,color:C.muted,marginTop:2}}>{cell.row} / {cell.col} / {cell.type1}×{cell.type2}</div>
+          </div>
+          <button onClick={onClose} style={{width:36,height:36,borderRadius:"50%",background:C.card,border:`1px solid ${C.border}`,color:C.sub,fontSize:16,cursor:"pointer",flexShrink:0}}>✕</button>
+        </div>
+
+        <div style={{padding:16}}>
+          {/* PROJECT INFO */}
+          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:14,marginBottom:12}}>
+            <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:10,fontWeight:700}}>PROJECT INFO</div>
+            <div style={{marginBottom:8}}>
+              <div style={{fontSize:11,color:C.sub,marginBottom:4}}>プロジェクト名</div>
+              <select value={useCustom?"__custom__":(plan.projectName||"")} onChange={e=>handleSelect(e.target.value)}
+                style={{...inp,cursor:"pointer"}}>
+                <option value="">-- プロジェクトを選択 --</option>
+                <option value={cell.name}>現在のマス: {cell.name}</option>
+                {cellOptions.filter(n=>n!==cell.name).map(name=><option key={name} value={name}>{name}</option>)}
+                <option value="__custom__">✏️ カスタム入力</option>
+              </select>
+              {useCustom&&(
+                <input value={plan.projectName||""} onChange={e=>upP("projectName",e.target.value)}
+                  placeholder="計画名を手入力..." style={{...inp,marginTop:8}}/>
+              )}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div><div style={{fontSize:11,color:C.sub,marginBottom:4}}>開始日</div><input type="date" value={plan.startDate||""} onChange={e=>upP("startDate",e.target.value)} style={inp}/></div>
+              <div><div style={{fontSize:11,color:C.sub,marginBottom:4}}>終了日</div><input type="date" value={plan.endDate||""} onChange={e=>upP("endDate",e.target.value)} style={inp}/></div>
+            </div>
+          </div>
+
+          {/* TIMELINE */}
+          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:14,marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",fontWeight:700}}>TIMELINE</div>
+              <button onClick={addPhase} style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${C.accent}`,background:C.accentGlow,color:C.accent,fontSize:11,fontWeight:700,cursor:"pointer"}}>+ 追加</button>
+            </div>
+            {pS&&pE&&pD>0&&(
+              <div style={{background:C.card2,borderRadius:6,height:18,display:"flex",alignItems:"center",padding:"0 6px",marginBottom:8}}>
+                <span style={{fontSize:9,color:C.muted}}>{plan.startDate}</span>
+                <span style={{fontSize:9,color:C.muted,marginLeft:"auto"}}>{plan.endDate}</span>
+              </div>
+            )}
+            {phases.length===0&&<div style={{textAlign:"center",color:C.muted,fontSize:12,padding:"14px 0"}}>フェーズを追加してください</div>}
+            {phases.map(ph=>{
+              const b=bar(ph);
+              return (
+                <div key={ph.id} style={{marginBottom:12}}>
+                  <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:4}}>
+                    <div style={{width:10,height:10,borderRadius:2,background:ph.color,flexShrink:0,cursor:"pointer"}}
+                      onClick={()=>upPh(ph.id,"color",PHASE_COLORS[(PHASE_COLORS.indexOf(ph.color)+1)%PHASE_COLORS.length])}/>
+                    <input value={ph.name} onChange={e=>upPh(ph.id,"name",e.target.value)} style={{...ci,flex:1,fontWeight:700}}/>
+                    <button onClick={()=>rmPh(ph.id)} style={{background:"none",border:"none",color:C.muted,fontSize:14,cursor:"pointer",padding:0}}>×</button>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:4}}>
+                    <input type="date" value={ph.start||""} onChange={e=>upPh(ph.id,"start",e.target.value)} style={{...ci,fontSize:11}}/>
+                    <input type="date" value={ph.end||""}   onChange={e=>upPh(ph.id,"end",e.target.value)}   style={{...ci,fontSize:11}}/>
+                  </div>
+                  <div style={{background:C.card2,borderRadius:5,height:16,position:"relative",overflow:"hidden"}}>
+                    {b&&<div style={{position:"absolute",top:2,bottom:2,left:`${b.l}%`,width:`${b.w}%`,background:ph.color,borderRadius:3,opacity:0.85,display:"flex",alignItems:"center",paddingLeft:4,overflow:"hidden"}}>
+                      <span style={{fontSize:8,color:"#fff",fontWeight:700,whiteSpace:"nowrap"}}>{ph.name}</span>
+                    </div>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* PAYMENTS */}
+          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:14,marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",fontWeight:700}}>支払いスケジュール</div>
+              <button onClick={addPay} style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${C.green}`,background:C.green+"22",color:C.green,fontSize:11,fontWeight:700,cursor:"pointer"}}>+ 追加</button>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"88px 70px 1fr 1fr 20px",gap:4,marginBottom:6}}>
+              {["日付","金額","項目","メモ",""].map(h=><div key={h} style={{fontSize:9,color:C.muted,fontWeight:700}}>{h}</div>)}
+            </div>
+            {payments.length===0&&<div style={{textAlign:"center",color:C.muted,fontSize:12,padding:"10px 0"}}>支払いを追加してください</div>}
+            {payments.map(py=>(
+              <div key={py.id} style={{display:"grid",gridTemplateColumns:"88px 70px 1fr 1fr 20px",gap:4,marginBottom:5,alignItems:"center"}}>
+                <input type="date" value={py.date||""} onChange={e=>upPay(py.id,"date",e.target.value)} style={{...ci,padding:"5px 4px",fontSize:10}}/>
+                <input type="number" value={py.amount||""} onChange={e=>upPay(py.id,"amount",parseInt(e.target.value)||0)} placeholder="0" style={{...ci,padding:"5px 4px",fontSize:11}}/>
+                <input value={py.item||""} onChange={e=>upPay(py.id,"item",e.target.value)} placeholder="項目" style={{...ci,padding:"5px 4px",fontSize:11}}/>
+                <input value={py.memo||""} onChange={e=>upPay(py.id,"memo",e.target.value)} placeholder="メモ" style={{...ci,padding:"5px 4px",fontSize:11}}/>
+                <button onClick={()=>rmPay(py.id)} style={{background:"none",border:"none",color:C.muted,fontSize:14,cursor:"pointer",padding:0}}>×</button>
+              </div>
+            ))}
+            {payments.length>0&&(
+              <div style={{borderTop:`1px solid ${C.border}`,paddingTop:8,marginTop:4,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontSize:12,color:C.sub,fontWeight:700}}>合計</span>
+                <span style={{fontSize:18,fontWeight:900,color:C.teal}}>¥{total.toLocaleString()}</span>
+              </div>
+            )}
+          </div>
+
+          {/* SAVE */}
+          <button onClick={handleSave} disabled={saving||ok}
+            style={{width:"100%",padding:"14px 0",borderRadius:13,border:"none",
+              background:ok?`linear-gradient(135deg,${C.green},${C.teal})`:`linear-gradient(135deg,${C.accent},${C.purple})`,
+              color:"#fff",fontWeight:800,fontSize:15,cursor:(saving||ok)?"default":"pointer",transition:"background 0.3s"}}>
+            {ok?"✓ 保存しました":saving?"保存中...":"計画書を保存"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── TAB BAR ──────────────────────────────────────────────────────────────────
 const TAB_ICONS = {
   home: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="22" height="22"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>),
@@ -943,74 +1073,6 @@ const TAB_LABELS = { home:"HOME", dash:"DASH", road:"ROAD", team:"TEAM" };
 const TAB_PAGE_TITLES = { home:"TRIZ OS", dash:"Dashboard", road:"Roadmap", team:"Team" };
 const TAB_PAGE_SUBS = { home:"81 戦略マトリクス", dash:"経営の脳 — 全体分析", road:"実行ロードマップ", team:"担当者と権限" };
 
-// ─── ROBOT SPLASH ─────────────────────────────────────────────────────────────
-function RobotSplash() {
-  useEffect(() => {
-    const s = document.createElement("style");
-    s.textContent = `
-      @keyframes rwalk { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-9px)} }
-      @keyframes rblink { 0%,88%,100%{opacity:1} 93%{opacity:0} }
-      @keyframes rdot { 0%,100%{opacity:0.3} 50%{opacity:1} }
-      .ra{animation:rwalk 0.55s ease-in-out infinite}
-      .rb{animation:rwalk 0.55s ease-in-out infinite 0.18s}
-      .rc{animation:rwalk 0.55s ease-in-out infinite 0.36s}
-      .reye{animation:rblink 2.8s ease-in-out infinite}
-      .rdot{animation:rdot 1.2s ease-in-out infinite}
-      .rdot2{animation:rdot 1.2s ease-in-out infinite 0.4s}
-      .rdot3{animation:rdot 1.2s ease-in-out infinite 0.8s}
-    `;
-    document.head.appendChild(s);
-    return () => document.head.removeChild(s);
-  }, []);
-  const bots=[{cls:"ra",color:"#6c63ff",id:"A",task:"設計中"},{cls:"rb",color:"#00c896",id:"B",task:"修正中"},{cls:"rc",color:"#c8a830",id:"C",task:"最適化"}];
-  return (
-    <div style={{minHeight:"100vh",background:C.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:28}}>
-      <div style={{fontSize:13,fontWeight:900,color:C.accent,letterSpacing:"0.14em"}}>YASUHIRO AI TEAM</div>
-      <div style={{display:"flex",gap:30,alignItems:"flex-end"}}>
-        {bots.map(b=>(
-          <div key={b.id} className={b.cls} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
-            <div style={{width:2,height:9,background:b.color,borderRadius:1,marginBottom:0}}/>
-            <div style={{width:6,height:6,borderRadius:"50%",background:b.color,marginTop:-4,boxShadow:`0 0 6px ${b.color}`}}/>
-            <div style={{width:38,height:30,background:b.color,borderRadius:9,position:"relative",marginTop:2}}>
-              <div className="reye" style={{position:"absolute",top:9,left:7,width:7,height:7,background:"#0a0a12",borderRadius:"50%"}}/>
-              <div className="reye" style={{position:"absolute",top:9,right:7,width:7,height:7,background:"#0a0a12",borderRadius:"50%"}}/>
-            </div>
-            <div style={{width:32,height:22,background:b.color+"bb",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <span style={{fontSize:11,fontWeight:900,color:"#0a0a12"}}>{b.id}</span>
-            </div>
-            <div style={{display:"flex",gap:5}}>
-              <div style={{width:9,height:11,background:b.color+"88",borderRadius:"0 0 4px 4px"}}/>
-              <div style={{width:9,height:11,background:b.color+"88",borderRadius:"0 0 4px 4px"}}/>
-            </div>
-            <div style={{fontSize:10,color:b.color,fontWeight:700,marginTop:2}}>{b.task}</div>
-          </div>
-        ))}
-      </div>
-      <div style={{display:"flex",gap:5,marginTop:4}}>
-        <div className="rdot"  style={{width:6,height:6,borderRadius:"50%",background:C.accent}}/>
-        <div className="rdot2" style={{width:6,height:6,borderRadius:"50%",background:C.accent}}/>
-        <div className="rdot3" style={{width:6,height:6,borderRadius:"50%",background:C.accent}}/>
-      </div>
-      <div style={{color:C.muted,fontSize:11,letterSpacing:"0.08em"}}>Supabaseに接続中...</div>
-    </div>
-  );
-}
-
-// ─── HELPER COMPONENTS ────────────────────────────────────────────────────────
-function Sec({label,children}) {
-  return <div style={{marginBottom:22}}>
-    <div style={{fontSize:11,color:C.sub,letterSpacing:"0.08em",marginBottom:12,textTransform:"uppercase",fontWeight:700}}>{label}</div>
-    {children}
-  </div>;
-}
-function FRow({label,children}) {
-  return <div style={{display:"flex",alignItems:"center",marginBottom:12,gap:14}}>
-    <div style={{fontSize:13,color:C.sub,minWidth:58,flexShrink:0}}>{label}</div>
-    <div style={{flex:1}}>{children}</div>
-  </div>;
-}
-const inp = {width:"100%",background:C.card2,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 13px",color:C.text,fontSize:13,boxSizing:"border-box",outline:"none"};
-
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
 export default function App() {
   const [tab, setTab]=useState("home");
@@ -1019,48 +1081,48 @@ export default function App() {
   const [selected, setSelected]=useState(null);
   const [loading, setLoading]=useState(true);
   const [saving, setSaving]=useState(false);
-  const [competitors, setCompetitors]=useState(()=>loadCompetitors());
-  const [compModal, setCompModal]=useState(null); // null | {comp, isNew}
+  const [plan, setPlan]=useState({ projectName:"", startDate:"", endDate:"", phases:[], payments:[] });
+  const [cellPlansIndex, setCellPlansIndex]=useState(new Set());
+  const [cellPlanModal, setCellPlanModal]=useState(null); // { cell, plan }
 
   useEffect(()=>{
-    Promise.all([loadCells(),loadMembers()]).then(([m,mb])=>{setMatrix(m);setMembers(mb);setLoading(false);});
+    Promise.all([loadCells(),loadMembers(),loadGlobalPlan(),loadCellPlansIndex()]).then(([m,mb,pl,cpi])=>{setMatrix(m);setMembers(mb);setPlan(pl);setCellPlansIndex(cpi);setLoading(false);});
   },[]);
+
+  async function handleOpenCellPlan(cell) {
+    const p = await loadCellPlan(cell.key);
+    setCellPlanModal({ cell, plan: p });
+  }
+  function handleCellPlanSaved(cellKey) {
+    setCellPlansIndex(prev => new Set([...prev, cellKey]));
+  }
 
   function exportCSV() {
     if(!matrix) return;
     const rows = Object.values(matrix);
-    const header = ["key","row","col","type1","type2","name","progress","status","priority","assignee","startDate","deadline","kpi","kgi","ksf","risk","next","income","expense","description"];
+    const header = ["key","row","col","type1","type2","name","progress","status","priority","assignee","startDate","deadline","kpi","ksf","risk","next","income","expense","description"];
     const csv = [header.join(","), ...rows.map(r => header.map(h => `"${String(r[h]??'').replace(/"/g,'""')}"`).join(","))].join("\n");
-    const blob = new Blob(["﻿"+csv], {type:"text/csv;charset=utf-8;"});
+    const blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8;"});
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
     a.download = `trizos_${new Date().toISOString().slice(0,10)}.csv`; a.click();
   }
 
   function handleSave(updated) {
+    // 即時UIに反映（awaitしない）
     setMatrix(prev => ({ ...prev, [updated.key]: updated }));
     setSelected(null);
+    // バックグラウンドで保存（失敗してもUIは更新済み）
     setSaving(true);
     saveCell(updated).finally(() => setSaving(false));
   }
 
-  function handleAddComp() {
-    setCompModal({ comp: { name:"", color: COMP_COLORS[competitors.length % COMP_COLORS.length], overview:"", strengths:"", weaknesses:"", strategy:"", share:"", industry:"", notes:"" }});
-  }
-  function handleEditComp(c) { setCompModal({ comp: c }); }
-  function handleSaveComp(c) {
-    const updated = compModal?.comp?.id
-      ? competitors.map(x => x.id===c.id ? c : x)
-      : [...competitors, c];
-    setCompetitors(updated);
-    saveCompetitors(updated);
-  }
-  function handleDeleteComp(id) {
-    const updated = competitors.filter(c => c.id !== id);
-    setCompetitors(updated);
-    saveCompetitors(updated);
-  }
-
-  if(loading) return <RobotSplash />;
+  if(loading) return (
+    <div style={{minHeight:"100vh",background:C.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14}}>
+      <div style={{width:48,height:48,borderRadius:12,background:C.accentGlow,border:`1px solid ${C.accent}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>⊞</div>
+      <div style={{color:C.accent,fontSize:15,fontWeight:700}}>TRIZ OS</div>
+      <div style={{color:C.muted,fontSize:12}}>Supabaseに接続しています...</div>
+    </div>
+  );
 
   return (
     <div style={{maxWidth:430,margin:"0 auto",minHeight:"100vh",background:C.bg,color:C.text,fontFamily:"'Noto Sans JP','Hiragino Sans',sans-serif",display:"flex",flexDirection:"column"}}>
@@ -1082,7 +1144,7 @@ export default function App() {
 
       {/* CONTENT */}
       <div style={{flex:1,overflowY:"auto",padding:"14px 12px 90px"}}>
-        {tab==="home"&&<HomeTab matrix={matrix} onCellClick={setSelected} competitors={competitors} onAddComp={handleAddComp} onEditComp={handleEditComp}/>}
+        {tab==="home"&&<HomeTab matrix={matrix} onCellClick={setSelected} cellPlansIndex={cellPlansIndex}/>}
         {tab==="dash"&&<DashTab matrix={matrix} members={members}/>}
         {tab==="road"&&<RoadTab matrix={matrix}/>}
         {tab==="team"&&<TeamTab members={members} setMembers={setMembers} matrix={matrix}/>}
@@ -1103,16 +1165,13 @@ export default function App() {
         })}
       </div>
 
-      {selected && <CellModal cell={matrix[selected.key]} onClose={()=>setSelected(null)} onSave={handleSave}/>}
-
-      {compModal && (
-        <CompetitorModal
-          comp={compModal.comp}
-          onClose={()=>setCompModal(null)}
-          onSave={handleSaveComp}
-          onDelete={handleDeleteComp}
-        />
-      )}
+      {selected&&<CellModal cell={matrix[selected.key]} onClose={()=>setSelected(null)} onSave={handleSave}
+        onOpenPlan={handleOpenCellPlan} cellPlansIndex={cellPlansIndex} matrix={matrix}/>}
+      {cellPlanModal&&<CellPlanModal cell={cellPlanModal.cell} initialPlan={cellPlanModal.plan}
+        onClose={()=>setCellPlanModal(null)}
+        onSaved={handleCellPlanSaved}
+        onSavedAndClose={()=>{setCellPlanModal(null);setSelected(null);}}
+        matrix={matrix}/>}
     </div>
   );
 }
