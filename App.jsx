@@ -608,14 +608,14 @@ function DashTab({ matrix, members }) {
 }
 
 // ─── ROAD TAB ─────────────────────────────────────────────────────────────────
-function RoadTab({ matrix }) {
+function RoadTab({ matrix, onOpenCellPlan }) {
   const [filter, setFilter]=useState("すべて");
-  const FILTERS=["すべて","高優先","実行中","危険"];
-  const MONTHS=["4月","5月","6月","7月","8月","9月"];
-  let cells=Object.values(matrix);
-  if(filter==="高優先") cells=cells.filter(c=>c.priority==="高");
-  else if(filter==="実行中") cells=cells.filter(c=>c.status==="実行"||c.status==="改善");
-  else if(filter==="危険") cells=cells.filter(c=>c.progress<40);
+  const FILTERS=["すべて","計画あり","計画なし"];
+
+  const allCells=Object.values(matrix);
+  let cells=allCells;
+  if(filter==="計画あり") cells=allCells.filter(c=>hasPlan(c.key));
+  else if(filter==="計画なし") cells=allCells.filter(c=>!hasPlan(c.key));
 
   return (
     <div>
@@ -629,32 +629,40 @@ function RoadTab({ matrix }) {
         ))}
       </div>
 
-      {/* Header row */}
-      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"8px 14px",marginBottom:8,display:"grid",gridTemplateColumns:"110px 1fr",gap:8}}>
-        <div style={{fontSize:11,color:C.sub}}>担当 / 案件</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)"}}>
-          {MONTHS.map(m=><div key={m} style={{fontSize:10,color:C.sub,textAlign:"center"}}>{m}</div>)}
-        </div>
-      </div>
+      {cells.length===0&&(
+        <div style={{textAlign:"center",color:C.muted,fontSize:13,marginTop:40}}>該当なし</div>
+      )}
 
-      {cells.slice(0,30).map(cell=>{
-        const col2=pColor(cell.progress);
-        const barEnd=Math.max(1,Math.round(cell.progress/17));
+      {cells.map(cell=>{
+        const plan=loadPlan(cell.key);
+        const has=!!plan;
+        const col=pColor(cell.progress);
         return (
-          <div key={cell.key} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 14px",marginBottom:5}}>
-            <div style={{display:"grid",gridTemplateColumns:"110px 1fr",gap:8,alignItems:"center"}}>
-              <div>
-                <div style={{fontSize:12,color:C.text,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cell.name.length>9?cell.name.slice(0,9)+"...":cell.name}</div>
-                <div style={{fontSize:10,color:C.muted,marginTop:2}}>{cell.assignee||"未割当"} · {cell.row}</div>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:3}}>
-                {MONTHS.map((m,i)=>(
-                  <div key={m} style={{height:22,borderRadius:5,overflow:"hidden",background:i<barEnd?col2+"18":"transparent",border:`1px solid ${i<barEnd?col2+"44":"transparent"}`,display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>
-                    {i===0&&cell.progress>0&&<div style={{position:"absolute",left:0,top:0,width:`${cell.progress}%`,height:"100%",background:barGrad(cell.progress),opacity:0.7,borderRadius:5}}/>}
-                    {i===0&&<span style={{fontSize:9,color:"#fff",fontWeight:800,position:"relative",zIndex:1}}>{cell.progress}%</span>}
+          <div key={cell.key} style={{background:C.card,border:`1px solid ${has?C.accent+"55":C.border}`,borderRadius:12,padding:"12px 14px",marginBottom:8}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                  <span style={{fontSize:10,padding:"2px 7px",borderRadius:20,background:has?C.accentGlow:"transparent",border:`1px solid ${has?C.accent:C.border}`,color:has?C.accent:C.muted,fontWeight:700}}>
+                    {has?"計画あり":"計画なし"}
+                  </span>
+                  <span style={{fontSize:10,color:C.muted}}>{cell.row}</span>
+                </div>
+                <div style={{fontSize:13,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cell.name||"（未設定）"}</div>
+                {has&&plan.projectName&&<div style={{fontSize:11,color:C.sub,marginTop:2}}>📋 {plan.projectName}</div>}
+                {has&&(plan.startDate||plan.endDate)&&(
+                  <div style={{fontSize:10,color:C.muted,marginTop:2}}>{plan.startDate||"?"} → {plan.endDate||"?"}</div>
+                )}
+                <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6}}>
+                  <div style={{flex:1,height:4,borderRadius:2,background:C.border}}>
+                    <div style={{width:`${cell.progress}%`,height:"100%",borderRadius:2,background:col}}/>
                   </div>
-                ))}
+                  <span style={{fontSize:10,color:col,fontWeight:700}}>{cell.progress}%</span>
+                </div>
               </div>
+              <button onClick={()=>onOpenCellPlan&&onOpenCellPlan(cell)}
+                style={{marginLeft:10,padding:"6px 12px",borderRadius:8,border:`1px solid ${C.accent}`,background:C.accentGlow,color:C.accent,fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>
+                {has?"編集":"作成"}
+              </button>
             </div>
           </div>
         );
@@ -1146,7 +1154,7 @@ export default function App() {
       <div style={{flex:1,overflowY:"auto",padding:"14px 12px 90px"}}>
         {tab==="home"&&<HomeTab matrix={matrix} onCellClick={setSelected} cellPlansIndex={cellPlansIndex}/>}
         {tab==="dash"&&<DashTab matrix={matrix} members={members}/>}
-        {tab==="road"&&<RoadTab matrix={matrix}/>}
+        {tab==="road"&&<RoadTab matrix={matrix} onOpenCellPlan={handleOpenCellPlan}/>}
         {tab==="team"&&<TeamTab members={members} setMembers={setMembers} matrix={matrix}/>}
       </div>
 
