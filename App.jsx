@@ -608,7 +608,7 @@ function DashTab({ matrix, members }) {
 }
 
 // ─── ROAD TAB ─────────────────────────────────────────────────────────────────
-function RoadTab({ matrix, onOpenCellPlan }) {
+function RoadTab({ matrix, onOpenPlan }) {
   const [filter, setFilter]=useState("すべて");
   const FILTERS=["すべて","計画あり","計画なし"];
 
@@ -659,7 +659,7 @@ function RoadTab({ matrix, onOpenCellPlan }) {
                   <span style={{fontSize:10,color:col,fontWeight:700}}>{cell.progress}%</span>
                 </div>
               </div>
-              <button onClick={()=>onOpenCellPlan&&onOpenCellPlan(cell)}
+              <button onClick={()=>onOpenPlan&&onOpenPlan(cell)}
                 style={{marginLeft:10,padding:"6px 12px",borderRadius:8,border:`1px solid ${C.accent}`,background:C.accentGlow,color:C.accent,fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>
                 {has?"編集":"作成"}
               </button>
@@ -1092,6 +1092,7 @@ export default function App() {
   const [plan, setPlan]=useState({ projectName:"", startDate:"", endDate:"", phases:[], payments:[] });
   const [cellPlansIndex, setCellPlansIndex]=useState(new Set());
   const [cellPlanModal, setCellPlanModal]=useState(null); // { cell, plan }
+  const [roadPlanCell, setRoadPlanCell]=useState(null);
 
   useEffect(()=>{
     Promise.all([loadCells(),loadMembers(),loadGlobalPlan(),loadCellPlansIndex()]).then(([m,mb,pl,cpi])=>{setMatrix(m);setMembers(mb);setPlan(pl);setCellPlansIndex(cpi);setLoading(false);});
@@ -1154,7 +1155,7 @@ export default function App() {
       <div style={{flex:1,overflowY:"auto",padding:"14px 12px 90px"}}>
         {tab==="home"&&<HomeTab matrix={matrix} onCellClick={setSelected} cellPlansIndex={cellPlansIndex}/>}
         {tab==="dash"&&<DashTab matrix={matrix} members={members}/>}
-        {tab==="road"&&<RoadTab matrix={matrix} onOpenCellPlan={handleOpenCellPlan}/>}
+        {tab==="road"&&<RoadTab matrix={matrix} onOpenPlan={setRoadPlanCell}/>}
         {tab==="team"&&<TeamTab members={members} setMembers={setMembers} matrix={matrix}/>}
       </div>
 
@@ -1180,6 +1181,7 @@ export default function App() {
         onSaved={handleCellPlanSaved}
         onSavedAndClose={()=>{setCellPlanModal(null);setSelected(null);}}
         matrix={matrix}/>}
+      {roadPlanCell&&<CellPlanModal cell={roadPlanCell} matrix={matrix} onClose={()=>setRoadPlanCell(null)}/>}
     </div>
   );
 }
