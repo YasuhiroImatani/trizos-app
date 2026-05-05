@@ -241,7 +241,6 @@ function CellModal({ cell, onClose, onSave, onOpenPlan, cellPlansIndex, matrix }
   const [editingName, setEditingName] = useState(false);
   const [aiText, setAiText] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
-  const [showPlan, setShowPlan] = useState(false);
   const profit = (d.income||0)-(d.expense||0);
   const nameRef = useRef();
 
@@ -390,14 +389,12 @@ function CellModal({ cell, onClose, onSave, onOpenPlan, cellPlansIndex, matrix }
             </button>
           </Sec>
 
-          <button onClick={()=>setShowPlan(true)}
+          <button onClick={()=>onOpenPlan(d)}
             style={{width:"100%",padding:"13px 0",borderRadius:13,border:`1px solid ${hasPlan(d.key)?C.teal:C.accent}`,
               background:hasPlan(d.key)?C.teal+"22":C.accentGlow,
               color:hasPlan(d.key)?C.teal:C.accent,fontWeight:800,fontSize:14,cursor:"pointer",marginTop:6,marginBottom:8}}>
             📋 4K計画書を{hasPlan(d.key)?"確認・編集":"作成"}
           </button>
-          {showPlan&&<CellPlanModal cell={d} matrix={matrix} onClose={()=>setShowPlan(false)}
-            onSaved={cellKey=>{}} onSavedAndClose={()=>setShowPlan(false)}/>}
 
           <button onClick={()=>{onSave(d);onClose();}}
             style={{width:"100%",padding:"15px 0",borderRadius:13,border:"none",background:`linear-gradient(135deg,${C.accent},${C.purple})`,color:"#fff",fontWeight:800,fontSize:15,cursor:"pointer",marginTop:6}}>
@@ -1092,7 +1089,7 @@ export default function App() {
   const [plan, setPlan]=useState({ projectName:"", startDate:"", endDate:"", phases:[], payments:[] });
   const [cellPlansIndex, setCellPlansIndex]=useState(new Set());
   const [cellPlanModal, setCellPlanModal]=useState(null); // { cell, plan }
-  const [roadPlanCell, setRoadPlanCell]=useState(null);
+  const [openPlanCell, setOpenPlanCell]=useState(null);
 
   useEffect(()=>{
     Promise.all([loadCells(),loadMembers(),loadGlobalPlan(),loadCellPlansIndex()]).then(([m,mb,pl,cpi])=>{setMatrix(m);setMembers(mb);setPlan(pl);setCellPlansIndex(cpi);setLoading(false);});
@@ -1155,7 +1152,7 @@ export default function App() {
       <div style={{flex:1,overflowY:"auto",padding:"14px 12px 90px"}}>
         {tab==="home"&&<HomeTab matrix={matrix} onCellClick={setSelected} cellPlansIndex={cellPlansIndex}/>}
         {tab==="dash"&&<DashTab matrix={matrix} members={members}/>}
-        {tab==="road"&&<RoadTab matrix={matrix} onOpenPlan={setRoadPlanCell}/>}
+        {tab==="road"&&<RoadTab matrix={matrix} onOpenPlan={setOpenPlanCell}/>}
         {tab==="team"&&<TeamTab members={members} setMembers={setMembers} matrix={matrix}/>}
       </div>
 
@@ -1175,13 +1172,13 @@ export default function App() {
       </div>
 
       {selected&&<CellModal cell={matrix[selected.key]} onClose={()=>setSelected(null)} onSave={handleSave}
-        onOpenPlan={handleOpenCellPlan} cellPlansIndex={cellPlansIndex} matrix={matrix}/>}
+        onOpenPlan={setOpenPlanCell} cellPlansIndex={cellPlansIndex} matrix={matrix}/>}
       {cellPlanModal&&<CellPlanModal cell={cellPlanModal.cell} initialPlan={cellPlanModal.plan}
         onClose={()=>setCellPlanModal(null)}
         onSaved={handleCellPlanSaved}
         onSavedAndClose={()=>{setCellPlanModal(null);setSelected(null);}}
         matrix={matrix}/>}
-      {roadPlanCell&&<CellPlanModal cell={roadPlanCell} matrix={matrix} onClose={()=>setRoadPlanCell(null)}/>}
+      {openPlanCell&&<CellPlanModal cell={openPlanCell} matrix={matrix} onClose={()=>setOpenPlanCell(null)}/>}
     </div>
   );
 }
