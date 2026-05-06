@@ -236,7 +236,7 @@ function TaskSection({ tasks, onChange }) {
 }
 
 // ─── CELL MODAL ───────────────────────────────────────────────────────────────
-function CellModal({ cell, onClose, onSave, onOpenPlan, cellPlansIndex, matrix, onProgressChange }) {
+function CellModal({ cell, onClose, onSave, matrix, onOpenPlan, onProgressChange, onAutoSave, cellPlansIndex }) {
   const [d, setD] = useState({...cell, tasks: cell.tasks||[]});
   const [editingName, setEditingName] = useState(false);
   const [aiText, setAiText] = useState("");
@@ -331,7 +331,7 @@ function CellModal({ cell, onClose, onSave, onOpenPlan, cellPlansIndex, matrix, 
             const progress = tasks.length ? Math.round(done/tasks.length*100) : d.progress;
             const updated = {...d, tasks, progress};
             setD(updated);
-            onSave(updated);
+            if (onAutoSave) onAutoSave(updated);
           }}/>
 
           {/* 4K */}
@@ -1140,6 +1140,11 @@ export default function App() {
     a.download = `trizos_${new Date().toISOString().slice(0,10)}.csv`; a.click();
   }
 
+  function handleAutoSave(cell) {
+    setMatrix(prev => ({...prev, [cell.key]: cell}));
+    saveCell(cell);
+  }
+
   function handleSave(updated) {
     // 即時UIに反映（awaitしない）
     setMatrix(prev => ({ ...prev, [updated.key]: updated }));
@@ -1198,8 +1203,10 @@ export default function App() {
         })}
       </div>
 
-      {selected&&<CellModal cell={matrix[selected.key]} onClose={()=>setSelected(null)} onSave={handleSave}
-        onOpenPlan={setOpenPlanCell} cellPlansIndex={cellPlansIndex} matrix={matrix} onProgressChange={handleProgressUpdate}/>}
+      {selected&&<CellModal cell={matrix[selected.key]} matrix={matrix}
+        onClose={()=>setSelected(null)} onSave={handleSave}
+        onOpenPlan={setOpenPlanCell} onProgressChange={handleProgressUpdate}
+        onAutoSave={handleAutoSave}/>}
       {cellPlanModal&&<CellPlanModal cell={cellPlanModal.cell} initialPlan={cellPlanModal.plan}
         onClose={()=>setCellPlanModal(null)}
         onSaved={handleCellPlanSaved}
