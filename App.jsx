@@ -910,6 +910,13 @@ function CellPlanModal({ cell, matrix, onClose, onProgressUpdate }) {
   const [newTask, setNewTask] = useState("");
   const [saved, setSaved] = useState(false);
 
+  useEffect(() => {
+    if (tasks.length > 0 && onProgressUpdate) {
+      const done = tasks.filter(t => t.done).length;
+      onProgressUpdate(cell.key, Math.round((done / tasks.length) * 100));
+    }
+  }, []);
+
   const totalPayment = payments.reduce((a, p) => a + (parseInt(p.amount) || 0), 0);
   function addPhase() { setPhases(p => [...p, { id: Date.now()+"", name: "", start: "", end: "", color: "#6c63ff" }]); }
   function removePhase(id) { setPhases(p => p.filter(x => x.id !== id)); }
@@ -1020,10 +1027,10 @@ function CellPlanModal({ cell, matrix, onClose, onProgressUpdate }) {
             )}
             {tasks.map(task=>(
               <div key={task.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:"#14141f",border:"1px solid #1e1e32",borderRadius:8,marginBottom:6}}>
-                <div onClick={()=>toggleTask(task.id)}
-                  style={{width:20,height:20,borderRadius:5,border:`2px solid ${task.done?"#6c63ff":"#44445a"}`,background:task.done?"#6c63ff":"transparent",flexShrink:0,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,color:"#fff"}}>
+                <button onClick={()=>toggleTask(task.id)}
+                  style={{width:20,height:20,borderRadius:5,border:`2px solid ${task.done?"#6c63ff":"#44445a"}`,background:task.done?"#6c63ff":"transparent",flexShrink:0,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,color:"#fff",padding:0,WebkitAppearance:"none"}}>
                   {task.done?"✓":""}
-                </div>
+                </button>
                 <span style={{flex:1,fontSize:13,color:task.done?"#44445a":"#eeeeff",textDecoration:task.done?"line-through":"none"}}>{task.text}</span>
                 <button onClick={()=>removeTask(task.id)} style={{background:"none",border:"none",color:"#44445a",fontSize:16,cursor:"pointer",padding:0}}>×</button>
               </div>
