@@ -892,7 +892,7 @@ function PlanTab({ plan, setPlan }) {
 }
 
 // ─── CELL PLAN MODAL ──────────────────────────────────────────────────────────
-function CellPlanModal({ cell, matrix, onClose }) {
+function CellPlanModal({ cell, matrix, onClose, onProgressUpdate }) {
   const allCellNames = Object.values(matrix)
     .map(c => c.name)
     .filter(n => n && n.trim() && n !== cell.name);
@@ -906,6 +906,8 @@ function CellPlanModal({ cell, matrix, onClose }) {
   const [endDate, setEndDate] = useState(existing?.endDate || "");
   const [phases, setPhases] = useState(existing?.phases || []);
   const [payments, setPayments] = useState(existing?.payments || []);
+  const [tasks, setTasks] = useState(existing?.tasks || []);
+  const [newTask, setNewTask] = useState("");
   const [saved, setSaved] = useState(false);
 
   const totalPayment = payments.reduce((a, p) => a + (parseInt(p.amount) || 0), 0);
@@ -915,10 +917,33 @@ function CellPlanModal({ cell, matrix, onClose }) {
   function addPayment() { setPayments(p => [...p, { id: Date.now()+"", date: "", amount: "", item: "", memo: "" }]); }
   function removePayment(id) { setPayments(p => p.filter(x => x.id !== id)); }
   function updatePayment(id, key, val) { setPayments(p => p.map(x => x.id === id ? {...x,[key]:val} : x)); }
+  function addTask() {
+    if (!newTask.trim()) return;
+    const updated = [...tasks, { id: Date.now()+"", text: newTask.trim(), done: false }];
+    setTasks(updated);
+    setNewTask("");
+    calcProgress(updated);
+  }
+  function toggleTask(id) {
+    const updated = tasks.map(x => x.id === id ? {...x, done: !x.done} : x);
+    setTasks(updated);
+    calcProgress(updated);
+  }
+  function removeTask(id) {
+    const updated = tasks.filter(x => x.id !== id);
+    setTasks(updated);
+    calcProgress(updated);
+  }
+  function calcProgress(list) {
+    if (!list.length || !onProgressUpdate) return;
+    const done = list.filter(t => t.done).length;
+    const pct = Math.round((done / list.length) * 100);
+    onProgressUpdate(cell.key, pct);
+  }
 
   function handleSave() {
     const name = useCustom ? customName : projName;
-    try { localStorage.setItem(`trizos_plan_${cell.key}`, JSON.stringify({ projName: name, startDate, endDate, phases, payments })); } catch {}
+    try { localStorage.setItem(`trizos_plan_${cell.key}`, JSON.stringify({ projName: name, startDate, endDate, phases, payments, tasks })); } catch {}
     setSaved(true);
     setTimeout(() => { setSaved(false); onClose(); }, 1200);
   }
@@ -980,6 +1005,37 @@ function CellPlanModal({ cell, matrix, onClose }) {
                 })()}
               </div>
             ))}
+          </div>
+          {/* TASKS */}
+          <div style={{marginBottom:18}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <div style={{fontSize:11,color:"#8888aa",fontWeight:700,letterSpacing:"0.06em"}}>
+                タスク {tasks.length>0&&<span style={{color:"#6c63ff",marginLeft:6}}>{tasks.filter(t=>t.done).length}/{tasks.length}</span>}
+              </div>
+            </div>
+            {tasks.length>0&&(
+              <div style={{background:"#1e1e32",borderRadius:6,height:6,marginBottom:10,overflow:"hidden"}}>
+                <div style={{width:`${Math.round(tasks.filter(t=>t.done).length/tasks.length*100)}%`,height:"100%",background:"linear-gradient(90deg,#6c63ff,#a07cff)",borderRadius:6,transition:"width 0.3s"}}/>
+              </div>
+            )}
+            {tasks.map(task=>(
+              <div key={task.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:"#14141f",border:"1px solid #1e1e32",borderRadius:8,marginBottom:6}}>
+                <div onClick={()=>toggleTask(task.id)}
+                  style={{width:20,height:20,borderRadius:5,border:`2px solid ${task.done?"#6c63ff":"#44445a"}`,background:task.done?"#6c63ff":"transparent",flexShrink:0,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,color:"#fff"}}>
+                  {task.done?"✓":""}
+                </div>
+                <span style={{flex:1,fontSize:13,color:task.done?"#44445a":"#eeeeff",textDecoration:task.done?"line-through":"none"}}>{task.text}</span>
+                <button onClick={()=>removeTask(task.id)} style={{background:"none",border:"none",color:"#44445a",fontSize:16,cursor:"pointer",padding:0}}>×</button>
+              </div>
+            ))}
+            <div style={{display:"flex",gap:8,marginTop:4}}>
+              <input value={newTask} onChange={e=>setNewTask(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&addTask()}
+                placeholder="タスクを追加..."
+                style={{flex:1,background:"#1a1a28",border:"1px solid #1e1e32",borderRadius:8,padding:"8px 12px",color:"#eeeeff",fontSize:13,outline:"none"}}/>
+              <button onClick={addTask}
+                style={{padding:"8px 14px",borderRadius:8,border:"none",background:"#6c63ff",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>追加</button>
+            </div>
           </div>
           <div style={{marginBottom:18}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
@@ -1050,6 +1106,14 @@ export default function App() {
   }
   function handleCellPlanSaved(cellKey) {
     setCellPlansIndex(prev => new Set([...prev, cellKey]));
+  }
+
+  function handleProgressUpdate(cellKey, progress) {
+    setMatrix(prev => {
+      const updated = {...prev, [cellKey]: {...prev[cellKey], progress}};
+      supa(`trizos_cells?id=eq.${encodeURIComponent(cellKey)}`, "PATCH", {progress});
+      return updated;
+    });
   }
 
   function exportCSV() {
@@ -1127,7 +1191,7 @@ export default function App() {
         onSaved={handleCellPlanSaved}
         onSavedAndClose={()=>{setCellPlanModal(null);setSelected(null);}}
         matrix={matrix}/>}
-      {openPlanCell&&<CellPlanModal cell={openPlanCell} matrix={matrix} onClose={()=>setOpenPlanCell(null)}/>}
+      {openPlanCell&&<CellPlanModal cell={openPlanCell} matrix={matrix} onClose={()=>setOpenPlanCell(null)} onProgressUpdate={handleProgressUpdate}/>}
     </div>
   );
 }
