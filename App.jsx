@@ -329,8 +329,9 @@ function CellModal({ cell, onClose, onSave, onOpenPlan, cellPlansIndex, matrix, 
           <TaskSection tasks={d.tasks} onChange={tasks=>{
             const done = tasks.filter(t=>t.done).length;
             const progress = tasks.length ? Math.round(done/tasks.length*100) : d.progress;
-            setD(p=>({...p, tasks, progress}));
-            if (onProgressChange) onProgressChange(cell.key, progress);
+            const updated = {...d, tasks, progress};
+            setD(updated);
+            onSave(updated);
           }}/>
 
           {/* 4K */}
