@@ -236,7 +236,7 @@ function TaskSection({ tasks, onChange }) {
 }
 
 // ─── CELL MODAL ───────────────────────────────────────────────────────────────
-function CellModal({ cell, onClose, onSave, onOpenPlan, cellPlansIndex, matrix }) {
+function CellModal({ cell, onClose, onSave, onOpenPlan, cellPlansIndex, matrix, onProgressChange }) {
   const [d, setD] = useState({...cell, tasks: cell.tasks||[]});
   const [editingName, setEditingName] = useState(false);
   const [aiText, setAiText] = useState("");
@@ -326,7 +326,12 @@ function CellModal({ cell, onClose, onSave, onOpenPlan, cellPlansIndex, matrix }
           </Sec>
 
           {/* TASKS */}
-          <TaskSection tasks={d.tasks} onChange={tasks=>setD(p=>({...p,tasks}))}/>
+          <TaskSection tasks={d.tasks} onChange={tasks=>{
+            const done = tasks.filter(t=>t.done).length;
+            const progress = tasks.length ? Math.round(done/tasks.length*100) : d.progress;
+            setD(p=>({...p, tasks, progress}));
+            if (onProgressChange) onProgressChange(cell.key, progress);
+          }}/>
 
           {/* 4K */}
           <Sec label="4K 戦略項目">
@@ -1117,9 +1122,10 @@ export default function App() {
 
   function handleProgressUpdate(cellKey, progress) {
     setMatrix(prev => {
-      const updated = {...prev, [cellKey]: {...prev[cellKey], progress}};
-      supa(`trizos_cells?id=eq.${encodeURIComponent(cellKey)}`, "PATCH", {progress});
-      return updated;
+      if (!prev[cellKey]) return prev;
+      const updatedCell = {...prev[cellKey], progress};
+      saveCell(updatedCell);
+      return {...prev, [cellKey]: updatedCell};
     });
   }
 
@@ -1192,7 +1198,7 @@ export default function App() {
       </div>
 
       {selected&&<CellModal cell={matrix[selected.key]} onClose={()=>setSelected(null)} onSave={handleSave}
-        onOpenPlan={setOpenPlanCell} cellPlansIndex={cellPlansIndex} matrix={matrix}/>}
+        onOpenPlan={setOpenPlanCell} cellPlansIndex={cellPlansIndex} matrix={matrix} onProgressChange={handleProgressUpdate}/>}
       {cellPlanModal&&<CellPlanModal cell={cellPlanModal.cell} initialPlan={cellPlanModal.plan}
         onClose={()=>setCellPlanModal(null)}
         onSaved={handleCellPlanSaved}
