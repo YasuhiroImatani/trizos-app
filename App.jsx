@@ -892,174 +892,123 @@ function PlanTab({ plan, setPlan }) {
 }
 
 // ─── CELL PLAN MODAL ──────────────────────────────────────────────────────────
-function CellPlanModal({ cell, initialPlan, onClose, onSaved, onSavedAndClose, matrix }) {
-  const [plan, setPlan] = useState(initialPlan || { projectName:"", startDate:"", endDate:"", phases:[], payments:[] });
-  const [saving, setSaving] = useState(false);
-  const [ok, setOk] = useState(false);
-  const [planLoading, setPlanLoading] = useState(!initialPlan);
-  useEffect(()=>{
-    if(!initialPlan){ loadCellPlan(cell.key).then(p=>{setPlan(p);setPlanLoading(false);}); }
-  },[]);
-
-  // 空文字のみ除外（デフォルト名も含める）
-  const cellOptions = Object.values(matrix||{})
-    .filter(c => c.name.trim())
+function CellPlanModal({ cell, matrix, onClose }) {
+  const allCellNames = Object.values(matrix)
     .map(c => c.name)
-    .filter((v,i,a) => a.indexOf(v)===i); // 重複排除
+    .filter(n => n && n.trim() && n !== cell.name);
+  const uniqueNames = [...new Set(allCellNames)];
 
-  const allKnownNames = new Set([cell.name, ...cellOptions]);
-  const [useCustom, setUseCustom] = useState(
-    !!initialPlan.projectName && !allKnownNames.has(initialPlan.projectName)
-  );
+  const existing = (() => { try { const s = localStorage.getItem(`trizos_plan_${cell.key}`); return s ? JSON.parse(s) : null; } catch { return null; } })();
+  const [projName, setProjName] = useState(existing?.projName || cell.name || "");
+  const [useCustom, setUseCustom] = useState(false);
+  const [customName, setCustomName] = useState(existing?.projName || "");
+  const [startDate, setStartDate] = useState(existing?.startDate || "");
+  const [endDate, setEndDate] = useState(existing?.endDate || "");
+  const [phases, setPhases] = useState(existing?.phases || []);
+  const [payments, setPayments] = useState(existing?.payments || []);
+  const [saved, setSaved] = useState(false);
 
-  function handleSelect(val) {
-    if (val === "__custom__") { setUseCustom(true); upP("projectName",""); }
-    else { setUseCustom(false); upP("projectName", val); }
+  const totalPayment = payments.reduce((a, p) => a + (parseInt(p.amount) || 0), 0);
+  function addPhase() { setPhases(p => [...p, { id: Date.now()+"", name: "", start: "", end: "", color: "#6c63ff" }]); }
+  function removePhase(id) { setPhases(p => p.filter(x => x.id !== id)); }
+  function updatePhase(id, key, val) { setPhases(p => p.map(x => x.id === id ? {...x,[key]:val} : x)); }
+  function addPayment() { setPayments(p => [...p, { id: Date.now()+"", date: "", amount: "", item: "", memo: "" }]); }
+  function removePayment(id) { setPayments(p => p.filter(x => x.id !== id)); }
+  function updatePayment(id, key, val) { setPayments(p => p.map(x => x.id === id ? {...x,[key]:val} : x)); }
+
+  function handleSave() {
+    const name = useCustom ? customName : projName;
+    try { localStorage.setItem(`trizos_plan_${cell.key}`, JSON.stringify({ projName: name, startDate, endDate, phases, payments })); } catch {}
+    setSaved(true);
+    setTimeout(() => { setSaved(false); onClose(); }, 1200);
   }
 
-  function upP(f,v){setPlan(p=>({...p,[f]:v}));}
-  function addPhase(){const i=(plan.phases||[]).length;setPlan(p=>({...p,phases:[...(p.phases||[]),{id:Date.now()+"",name:"新フェーズ",start:p.startDate||"",end:p.endDate||"",color:PHASE_COLORS[i%PHASE_COLORS.length]}]}));}
-  function upPh(id,f,v){setPlan(p=>({...p,phases:p.phases.map(ph=>ph.id===id?{...ph,[f]:v}:ph)}));}
-  function rmPh(id){setPlan(p=>({...p,phases:p.phases.filter(ph=>ph.id!==id)}));}
-  function addPay(){setPlan(p=>({...p,payments:[...(p.payments||[]),{id:Date.now()+"",date:"",amount:0,item:"",memo:""}]}));}
-  function upPay(id,f,v){setPlan(p=>({...p,payments:p.payments.map(py=>py.id===id?{...py,[f]:v}:py)}));}
-  function rmPay(id){setPlan(p=>({...p,payments:p.payments.filter(py=>py.id!==id)}));}
-
-  async function handleSave(){
-    setSaving(true);
-    await saveCellPlan(cell.key,plan);
-    setSaving(false); setOk(true);
-    if(onSaved) onSaved(cell.key);
-    setTimeout(()=>{setOk(false);if(onSavedAndClose)onSavedAndClose();else onClose();},1500);
-  }
-
-  const phases=plan.phases||[], payments=plan.payments||[];
-  const total=payments.reduce((a,p)=>a+(parseInt(p.amount)||0),0);
-  const pS=plan.startDate?new Date(plan.startDate):null, pE=plan.endDate?new Date(plan.endDate):null;
-  const pD=pS&&pE?(pE-pS)/86400000:0;
-  function bar(ph){
-    if(!pS||!pD||!ph.start||!ph.end)return null;
-    const s=new Date(ph.start),e=new Date(ph.end);
-    const l=Math.max(0,Math.min(100,(s-pS)/86400000/pD*100));
-    const w=Math.max(2,Math.min(100-l,(e-s)/86400000/pD*100));
-    return{l,w};
-  }
-  const ci={...inp,padding:"6px 8px",fontSize:12};
-
-  if(planLoading) return (
-    <div style={{position:"fixed",inset:0,background:"#000c",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
-      <div style={{color:C.accent,fontSize:14,fontWeight:700}}>読み込み中...</div>
-    </div>
-  );
+  const ganttStart = startDate ? new Date(startDate) : null;
+  const ganttEnd = endDate ? new Date(endDate) : null;
+  const totalDays = ganttStart && ganttEnd ? (ganttEnd - ganttStart) / 86400000 : 0;
+  const inp2 = {width:"100%",background:"#1a1a28",border:"1px solid #1e1e32",borderRadius:10,padding:"10px 13px",color:"#eeeeff",fontSize:13,boxSizing:"border-box",outline:"none"};
 
   return (
-    <div style={{position:"fixed",inset:0,background:"#000c",zIndex:400,overflow:"hidden"}} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",background:C.surface,minHeight:"100vh",paddingBottom:30,height:"100%",overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
-
-        {/* HEADER */}
-        <div style={{padding:"16px 18px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:12}}>
-          <div style={{flex:1}}>
-            <div style={{fontSize:11,color:C.teal,fontWeight:700,letterSpacing:"0.1em"}}>4K計画書</div>
-            <div style={{fontSize:15,fontWeight:800,color:C.text,marginTop:3}}>{cell.name}</div>
-            <div style={{fontSize:10,color:C.muted,marginTop:2}}>{cell.row} / {cell.col} / {cell.type1}×{cell.type2}</div>
+    <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.75)",zIndex:600,overflowY:"auto"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",background:"#0f0f1a",minHeight:"100%",paddingBottom:40}}>
+        <div style={{padding:"18px 16px 14px",borderBottom:"1px solid #1e1e32",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <div style={{fontSize:15,fontWeight:900,color:"#6c63ff"}}>📋 4K計画書</div>
+            <div style={{fontSize:11,color:"#44445a",marginTop:2}}>{cell.name}</div>
           </div>
-          <button onClick={onClose} style={{width:36,height:36,borderRadius:"50%",background:C.card,border:`1px solid ${C.border}`,color:C.sub,fontSize:16,cursor:"pointer",flexShrink:0}}>✕</button>
+          <button onClick={onClose} style={{width:34,height:34,borderRadius:"50%",background:"#14141f",border:"1px solid #1e1e32",color:"#8888aa",fontSize:16,cursor:"pointer"}}>✕</button>
         </div>
-
-        <div style={{padding:16}}>
-          {/* PROJECT INFO */}
-          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:14,marginBottom:12}}>
-            <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginBottom:10,fontWeight:700}}>PROJECT INFO</div>
-            <div style={{marginBottom:8}}>
-              <div style={{fontSize:11,color:C.sub,marginBottom:4}}>プロジェクト名</div>
-              <select value={useCustom?"__custom__":(plan.projectName||"")} onChange={e=>handleSelect(e.target.value)}
-                style={{...inp,cursor:"pointer"}}>
-                <option value="">-- プロジェクトを選択 --</option>
-                <option value={cell.name}>現在のマス: {cell.name}</option>
-                {cellOptions.filter(n=>n!==cell.name).map(name=><option key={name} value={name}>{name}</option>)}
-                <option value="__custom__">✏️ カスタム入力</option>
-              </select>
-              {useCustom&&(
-                <input value={plan.projectName||""} onChange={e=>upP("projectName",e.target.value)}
-                  placeholder="計画名を手入力..." style={{...inp,marginTop:8}}/>
-              )}
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-              <div><div style={{fontSize:11,color:C.sub,marginBottom:4}}>開始日</div><input type="date" value={plan.startDate||""} onChange={e=>upP("startDate",e.target.value)} style={inp}/></div>
-              <div><div style={{fontSize:11,color:C.sub,marginBottom:4}}>終了日</div><input type="date" value={plan.endDate||""} onChange={e=>upP("endDate",e.target.value)} style={inp}/></div>
-            </div>
+        <div style={{padding:"16px 14px"}}>
+          <div style={{marginBottom:18}}>
+            <div style={{fontSize:11,color:"#8888aa",marginBottom:6,fontWeight:700}}>プロジェクト名</div>
+            <select value={useCustom ? "__custom__" : projName} onChange={e => {
+              if (e.target.value === "__custom__") { setUseCustom(true); }
+              else { setUseCustom(false); setProjName(e.target.value); }
+            }} style={{...inp2,marginBottom:useCustom?8:0}}>
+              <option value={cell.name||"現在のマス"}>現在のマス: {cell.name}</option>
+              {uniqueNames.map(n => <option key={n} value={n}>{n}</option>)}
+              <option value="__custom__">✏️ カスタム入力</option>
+            </select>
+            {useCustom && <input value={customName} onChange={e=>setCustomName(e.target.value)} placeholder="プロジェクト名を入力..." style={inp2}/>}
           </div>
-
-          {/* TIMELINE */}
-          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:14,marginBottom:12}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:18}}>
+            <div><div style={{fontSize:11,color:"#8888aa",marginBottom:5,fontWeight:700}}>開始日</div><input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} style={inp2}/></div>
+            <div><div style={{fontSize:11,color:"#8888aa",marginBottom:5,fontWeight:700}}>終了日</div><input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} style={inp2}/></div>
+          </div>
+          <div style={{marginBottom:18}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-              <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",fontWeight:700}}>TIMELINE</div>
-              <button onClick={addPhase} style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${C.accent}`,background:C.accentGlow,color:C.accent,fontSize:11,fontWeight:700,cursor:"pointer"}}>+ 追加</button>
+              <div style={{fontSize:11,color:"#8888aa",fontWeight:700}}>タイムライン</div>
+              <button onClick={addPhase} style={{padding:"5px 12px",borderRadius:20,border:"1px solid #6c63ff",background:"#6c63ff40",color:"#6c63ff",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ フェーズ追加</button>
             </div>
-            {pS&&pE&&pD>0&&(
-              <div style={{background:C.card2,borderRadius:6,height:18,display:"flex",alignItems:"center",padding:"0 6px",marginBottom:8}}>
-                <span style={{fontSize:9,color:C.muted}}>{plan.startDate}</span>
-                <span style={{fontSize:9,color:C.muted,marginLeft:"auto"}}>{plan.endDate}</span>
+            {phases.length===0&&<div style={{fontSize:12,color:"#44445a",textAlign:"center",padding:"14px 0"}}>フェーズを追加してください</div>}
+            {phases.map(ph=>(
+              <div key={ph.id} style={{background:"#14141f",border:"1px solid #1e1e32",borderLeft:`3px solid ${ph.color||"#6c63ff"}`,borderRadius:10,padding:12,marginBottom:8}}>
+                <div style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
+                  <input value={ph.name} onChange={e=>updatePhase(ph.id,"name",e.target.value)} placeholder="フェーズ名..." style={{...inp2,flex:1,padding:"7px 10px"}}/>
+                  <input type="color" value={ph.color||"#6c63ff"} onChange={e=>updatePhase(ph.id,"color",e.target.value)} style={{width:28,height:28,border:"none",background:"none",cursor:"pointer",padding:0}}/>
+                  <button onClick={()=>removePhase(ph.id)} style={{background:"none",border:"none",color:"#44445a",fontSize:18,cursor:"pointer",padding:0}}>×</button>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  <input type="date" value={ph.start} onChange={e=>updatePhase(ph.id,"start",e.target.value)} style={{...inp2,padding:"6px 8px",fontSize:12}}/>
+                  <input type="date" value={ph.end} onChange={e=>updatePhase(ph.id,"end",e.target.value)} style={{...inp2,padding:"6px 8px",fontSize:12}}/>
+                </div>
+                {totalDays>0&&ph.start&&ph.end&&(()=>{
+                  const ps=new Date(ph.start),pe=new Date(ph.end);
+                  const left=Math.max(0,((ps-ganttStart)/86400000/totalDays)*100);
+                  const width=Math.min(100-left,((pe-ps)/86400000/totalDays)*100);
+                  return(<div style={{marginTop:8,background:"#1e1e32",borderRadius:6,height:8,overflow:"hidden"}}><div style={{marginLeft:`${left}%`,width:`${width}%`,height:"100%",background:ph.color||"#6c63ff",borderRadius:6,minWidth:4}}/></div>);
+                })()}
               </div>
-            )}
-            {phases.length===0&&<div style={{textAlign:"center",color:C.muted,fontSize:12,padding:"14px 0"}}>フェーズを追加してください</div>}
-            {phases.map(ph=>{
-              const b=bar(ph);
-              return (
-                <div key={ph.id} style={{marginBottom:12}}>
-                  <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:4}}>
-                    <div style={{width:10,height:10,borderRadius:2,background:ph.color,flexShrink:0,cursor:"pointer"}}
-                      onClick={()=>upPh(ph.id,"color",PHASE_COLORS[(PHASE_COLORS.indexOf(ph.color)+1)%PHASE_COLORS.length])}/>
-                    <input value={ph.name} onChange={e=>upPh(ph.id,"name",e.target.value)} style={{...ci,flex:1,fontWeight:700}}/>
-                    <button onClick={()=>rmPh(ph.id)} style={{background:"none",border:"none",color:C.muted,fontSize:14,cursor:"pointer",padding:0}}>×</button>
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:4}}>
-                    <input type="date" value={ph.start||""} onChange={e=>upPh(ph.id,"start",e.target.value)} style={{...ci,fontSize:11}}/>
-                    <input type="date" value={ph.end||""}   onChange={e=>upPh(ph.id,"end",e.target.value)}   style={{...ci,fontSize:11}}/>
-                  </div>
-                  <div style={{background:C.card2,borderRadius:5,height:16,position:"relative",overflow:"hidden"}}>
-                    {b&&<div style={{position:"absolute",top:2,bottom:2,left:`${b.l}%`,width:`${b.w}%`,background:ph.color,borderRadius:3,opacity:0.85,display:"flex",alignItems:"center",paddingLeft:4,overflow:"hidden"}}>
-                      <span style={{fontSize:8,color:"#fff",fontWeight:700,whiteSpace:"nowrap"}}>{ph.name}</span>
-                    </div>}
+            ))}
+          </div>
+          <div style={{marginBottom:18}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <div style={{fontSize:11,color:"#8888aa",fontWeight:700}}>支払いスケジュール</div>
+              <button onClick={addPayment} style={{padding:"5px 12px",borderRadius:20,border:"1px solid #00c896",background:"#00c89622",color:"#00c896",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ 追加</button>
+            </div>
+            {payments.length===0&&<div style={{fontSize:12,color:"#44445a",textAlign:"center",padding:"14px 0"}}>支払いを追加してください</div>}
+            {payments.map(py=>(
+              <div key={py.id} style={{background:"#14141f",border:"1px solid #1e1e32",borderRadius:10,padding:12,marginBottom:8}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                  <input type="date" value={py.date} onChange={e=>updatePayment(py.id,"date",e.target.value)} style={{...inp2,padding:"7px 8px",fontSize:12}}/>
+                  <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                    <input type="number" value={py.amount} onChange={e=>updatePayment(py.id,"amount",e.target.value)} placeholder="金額" style={{...inp2,flex:1,padding:"7px 8px",fontSize:12}}/>
+                    <button onClick={()=>removePayment(py.id)} style={{background:"none",border:"none",color:"#44445a",fontSize:18,cursor:"pointer",padding:0,flexShrink:0}}>×</button>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-
-          {/* PAYMENTS */}
-          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:14,marginBottom:12}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-              <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",fontWeight:700}}>支払いスケジュール</div>
-              <button onClick={addPay} style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${C.green}`,background:C.green+"22",color:C.green,fontSize:11,fontWeight:700,cursor:"pointer"}}>+ 追加</button>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"88px 70px 1fr 1fr 20px",gap:4,marginBottom:6}}>
-              {["日付","金額","項目","メモ",""].map(h=><div key={h} style={{fontSize:9,color:C.muted,fontWeight:700}}>{h}</div>)}
-            </div>
-            {payments.length===0&&<div style={{textAlign:"center",color:C.muted,fontSize:12,padding:"10px 0"}}>支払いを追加してください</div>}
-            {payments.map(py=>(
-              <div key={py.id} style={{display:"grid",gridTemplateColumns:"88px 70px 1fr 1fr 20px",gap:4,marginBottom:5,alignItems:"center"}}>
-                <input type="date" value={py.date||""} onChange={e=>upPay(py.id,"date",e.target.value)} style={{...ci,padding:"5px 4px",fontSize:10}}/>
-                <input type="number" value={py.amount||""} onChange={e=>upPay(py.id,"amount",parseInt(e.target.value)||0)} placeholder="0" style={{...ci,padding:"5px 4px",fontSize:11}}/>
-                <input value={py.item||""} onChange={e=>upPay(py.id,"item",e.target.value)} placeholder="項目" style={{...ci,padding:"5px 4px",fontSize:11}}/>
-                <input value={py.memo||""} onChange={e=>upPay(py.id,"memo",e.target.value)} placeholder="メモ" style={{...ci,padding:"5px 4px",fontSize:11}}/>
-                <button onClick={()=>rmPay(py.id)} style={{background:"none",border:"none",color:C.muted,fontSize:14,cursor:"pointer",padding:0}}>×</button>
+                <input value={py.item} onChange={e=>updatePayment(py.id,"item",e.target.value)} placeholder="項目（例：サーバー代）" style={{...inp2,marginBottom:6,padding:"7px 10px"}}/>
+                <input value={py.memo} onChange={e=>updatePayment(py.id,"memo",e.target.value)} placeholder="メモ" style={{...inp2,padding:"7px 10px"}}/>
               </div>
             ))}
             {payments.length>0&&(
-              <div style={{borderTop:`1px solid ${C.border}`,paddingTop:8,marginTop:4,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{fontSize:12,color:C.sub,fontWeight:700}}>合計</span>
-                <span style={{fontSize:18,fontWeight:900,color:C.teal}}>¥{total.toLocaleString()}</span>
+              <div style={{display:"flex",justifyContent:"space-between",padding:"10px 14px",background:"#1a1a28",border:"1px solid #1e1e32",borderRadius:10}}>
+                <span style={{fontSize:13,color:"#8888aa"}}>合計</span>
+                <span style={{fontSize:15,fontWeight:800,color:"#00c896"}}>¥{totalPayment.toLocaleString()}</span>
               </div>
             )}
           </div>
-
-          {/* SAVE */}
-          <button onClick={handleSave} disabled={saving||ok}
-            style={{width:"100%",padding:"14px 0",borderRadius:13,border:"none",
-              background:ok?`linear-gradient(135deg,${C.green},${C.teal})`:`linear-gradient(135deg,${C.accent},${C.purple})`,
-              color:"#fff",fontWeight:800,fontSize:15,cursor:(saving||ok)?"default":"pointer",transition:"background 0.3s"}}>
-            {ok?"✓ 保存しました":saving?"保存中...":"計画書を保存"}
+          <button onClick={handleSave} style={{width:"100%",padding:"14px 0",borderRadius:13,border:"none",background:saved?"linear-gradient(135deg,#00c896,#00e5c8)":"linear-gradient(135deg,#6c63ff,#a07cff)",color:"#fff",fontWeight:800,fontSize:15,cursor:"pointer"}}>
+            {saved?"✓ 保存しました":"計画書を保存"}
           </button>
         </div>
       </div>
