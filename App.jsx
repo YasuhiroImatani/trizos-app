@@ -331,7 +331,7 @@ function CellModal({ cell, onClose, onSave, matrix, onOpenPlan, onProgressChange
             const progress = tasks.length ? Math.round(done/tasks.length*100) : d.progress;
             const updated = {...d, tasks, progress};
             setD(updated);
-            if (onAutoSave) onAutoSave(updated);
+            onSave(updated);
           }}/>
 
           {/* 4K */}
@@ -1146,10 +1146,7 @@ export default function App() {
   }
 
   function handleSave(updated) {
-    // 即時UIに反映（awaitしない）
     setMatrix(prev => ({ ...prev, [updated.key]: updated }));
-    setSelected(null);
-    // バックグラウンドで保存（失敗してもUIは更新済み）
     setSaving(true);
     saveCell(updated).finally(() => setSaving(false));
   }
