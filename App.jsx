@@ -351,6 +351,38 @@ function CellModal({ cell, onClose, onSave, matrix, onOpenPlan, onProgressChange
             })}
           </Sec>
 
+          {/* RIVAL (販売 only) */}
+          {d.col === "販売" && (
+          <Sec label="ライバル会社データ">
+            {(d.rivals||[]).map((r,i)=>(
+              <div key={i} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:12,marginBottom:10,position:"relative"}}>
+                <button onClick={()=>setD(p=>({...p,rivals:(p.rivals||[]).filter((_,j)=>j!==i)}))}
+                  style={{position:"absolute",top:8,right:8,background:"none",border:"none",color:C.muted,fontSize:18,cursor:"pointer"}}>×</button>
+                {[
+                  {k:"name",label:"会社名",rows:1},
+                  {k:"business",label:"業務内容",rows:2},
+                  {k:"unique",label:"独自の特化したサービス",rows:2},
+                  {k:"weakness",label:"弱点",rows:2},
+                  {k:"strength",label:"向こうの強み",rows:2},
+                  {k:"memo",label:"メモ",rows:2},
+                ].map(({k,label,rows})=>(
+                  <div key={k} style={{marginBottom:8}}>
+                    <div style={{fontSize:11,color:C.sub,marginBottom:4}}>{label}</div>
+                    {rows===1
+                      ? <input value={r[k]||""} onChange={e=>{const v=e.target.value;setD(p=>({...p,rivals:(p.rivals||[]).map((x,j)=>j===i?{...x,[k]:v}:x)}))}} placeholder={`${label}を入力...`} style={inp}/>
+                      : <textarea value={r[k]||""} onChange={e=>{const v=e.target.value;setD(p=>({...p,rivals:(p.rivals||[]).map((x,j)=>j===i?{...x,[k]:v}:x)}))}} rows={rows} placeholder={`${label}を入力...`} style={{...inp,resize:"none",fontFamily:"inherit"}}/>
+                    }
+                  </div>
+                ))}
+              </div>
+            ))}
+            <button onClick={()=>setD(p=>({...p,rivals:[...(p.rivals||[]),{name:"",business:"",unique:"",weakness:"",strength:"",memo:""}]}))}
+              style={{width:"100%",padding:"10px 0",borderRadius:10,border:`1px dashed ${C.accent}`,background:"transparent",color:C.accent,fontWeight:700,fontSize:13,cursor:"pointer"}}>
+              + ライバル会社を追加
+            </button>
+          </Sec>
+          )}
+
           {/* DESC */}
           <Sec label="説明">
             <textarea value={d.description} onChange={e=>setD(p=>({...p,description:e.target.value}))} rows={3} style={{...inp,resize:"none",fontFamily:"inherit"}}/>
