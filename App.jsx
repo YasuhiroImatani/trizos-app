@@ -67,7 +67,7 @@ function buildInitialCells() {
       name: `${row}化の${col} ${t1}×${t2}戦略`,
       progress: 0, status: "未着手", priority: "中",
       assignee: "", startDate: "", deadline: "",
-      kpi: "", ksf: "", risk: "", next: "",
+      kpi: "", kgi: "", ksf: "", risk: "", next: "",
       description: `${row}領域における「${col}」の${t1}×${t2}の打ち手。`,
       income: 0, expense: 0, tasks: [],
     };
@@ -336,7 +336,7 @@ function CellModal({ cell, onClose, onSave, matrix, onOpenPlan, onProgressChange
 
           {/* 4K */}
           <Sec label="4K 戦略項目">
-            {[{k:"kpi",label:"KPI",tag:"数値目標",color:C.blue},{k:"ksf",label:"KSF",tag:"サクセスファクター",color:C.green},{k:"risk",label:"RISK",tag:"リスクファクター",color:C.red},{k:"next",label:"NEXT",tag:"次にやる事",color:C.purple}].map(({k,label,tag,color})=>{
+            {[{k:"kpi",label:"KPI",tag:"数値目標",color:C.blue},{k:"kgi",label:"KGI",tag:"重要目標指標",color:C.orange},{k:"ksf",label:"KSF",tag:"サクセスファクター",color:C.green},{k:"risk",label:"RISK",tag:"リスクファクター",color:C.red},{k:"next",label:"NEXT",tag:"次にやる事",color:C.purple}].map(({k,label,tag,color})=>{
               const filled = d[k]?.trim().length > 0;
               return (
               <div key={k} style={{background:filled ? C.card : "#ffffff",border:`1px solid ${filled ? color+"66" : "#e0e0e0"}`,borderLeft:`3px solid ${filled ? color : "#d0d0d0"}`,borderRadius:12,padding:14,marginBottom:10}}>
@@ -979,6 +979,20 @@ function CellPlanModal({ cell, matrix, onClose, onProgressUpdate }) {
     setTasks(updated);
     calcProgress(updated);
   }
+  function moveTaskUp(id) {
+    const idx = tasks.findIndex(x => x.id === id);
+    if (idx <= 0) return;
+    const updated = [...tasks];
+    [updated[idx-1], updated[idx]] = [updated[idx], updated[idx-1]];
+    setTasks(updated);
+  }
+  function moveTaskDown(id) {
+    const idx = tasks.findIndex(x => x.id === id);
+    if (idx < 0 || idx >= tasks.length - 1) return;
+    const updated = [...tasks];
+    [updated[idx], updated[idx+1]] = [updated[idx+1], updated[idx]];
+    setTasks(updated);
+  }
   function calcProgress(list) {
     if (!list.length || !onProgressUpdate) return;
     const done = list.filter(t => t.done).length;
@@ -1070,7 +1084,7 @@ function CellPlanModal({ cell, matrix, onClose, onProgressUpdate }) {
                   {task.done?"✓":""}
                 </button>
                 <span style={{flex:1,fontSize:13,color:task.done?"#44445a":"#eeeeff",textDecoration:task.done?"line-through":"none"}}>{task.text}</span>
-                <button onClick={()=>removeTask(task.id)} style={{background:"none",border:"none",color:"#44445a",fontSize:16,cursor:"pointer",padding:0}}>×</button>
+                <button onClick={()=>moveTaskUp(task.id)} style={{background:"none",border:"none",color:"#8888aa",fontSize:11,cursor:"pointer",padding:"0 2px",lineHeight:1}} title="上へ">▲</button><button onClick={()=>moveTaskDown(task.id)} style={{background:"none",border:"none",color:"#8888aa",fontSize:11,cursor:"pointer",padding:"0 2px",lineHeight:1}} title="下へ">▼</button><button onClick={()=>removeTask(task.id)} style={{background:"none",border:"none",color:"#44445a",fontSize:16,cursor:"pointer",padding:0}}>×</button>
               </div>
             ))}
             <div style={{display:"flex",gap:8,marginTop:4}}>
