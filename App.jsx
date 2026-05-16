@@ -1169,7 +1169,7 @@ function BizItem({ row, bizNames, selectedBiz, setSelectedBiz, setDrawerOpen, up
 }
 
 // ─── PROJECT MODAL ───────────────────────────────────────────────────────────
-function ProjectModal({projects,activeProjectId,onSwitch,onCreate,onRename,onClose}){
+function ProjectModal({projects,activeProjectId,onSwitch,onCreate,onRename,onDelete,onClose}){
   const [newName,setNewName]=useState('');
   const [editId,setEditId]=useState(null);
   const [editVal,setEditVal]=useState('');
@@ -1193,6 +1193,7 @@ function ProjectModal({projects,activeProjectId,onSwitch,onCreate,onRename,onClo
                   {activeProjectId===p.id?'▶ ':''}{p.name}
                 </button>
                 <button onClick={()=>{setEditId(p.id);setEditVal(p.name);}} style={{background:'none',border:`1px solid ${C.border}`,color:C.muted,fontSize:11,cursor:'pointer',padding:'4px 8px',borderRadius:6,whiteSpace:'nowrap'}}>名前変更</button>
+                {p.id!==activeProjectId&&onDelete&&<button onClick={()=>{if(window.confirm(p.name+'を削除しますか？'))onDelete(p.id);}} style={{background:'none',border:'1px solid #e84393',color:'#e84393',fontSize:11,cursor:'pointer',padding:'4px 8px',borderRadius:6,whiteSpace:'nowrap'}}>削除</button>}
               </div>
             )}
           </div>
@@ -1293,6 +1294,12 @@ export default function App() {
     const list=projects.map(p=>p.id===id?{...p,name}:p);
     setProjects(list);saveProjectsList(list);
   }
+  function deleteProject(id){
+    if(id===activeProjId)return;
+    const list=projects.filter(p=>p.id!==id);
+    setProjects(list);saveProjectsList(list);
+    try{localStorage.removeItem('trizos_proj_'+id);}catch{}
+  }
   function handleSave(updated) {
     setMatrix(prev => ({ ...prev, [updated.key]: updated }));
     setSaving(true);
@@ -1329,7 +1336,7 @@ export default function App() {
       </div>
 
       {/* PROJECT MODAL */}
-      {projModalOpen&&<ProjectModal projects={projects} activeProjectId={activeProjId} onSwitch={switchToProject} onCreate={createProject} onRename={renameProject} onClose={()=>setProjModalOpen(false)}/>}
+      {projModalOpen&&<ProjectModal projects={projects} activeProjectId={activeProjId} onSwitch={switchToProject} onCreate={createProject} onRename={renameProject} onDelete={deleteProject} onClose={()=>setProjModalOpen(false)}/>}
 
       {/* SIDE DRAWER */}
       {drawerOpen&&<div onClick={()=>setDrawerOpen(false)} style={{position:"fixed",inset:0,zIndex:300,background:"rgba(0,0,0,0.55)"}}>
