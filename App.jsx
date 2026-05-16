@@ -1192,7 +1192,7 @@ function ProjectModal({projects,activeProjectId,onSwitch,onCreate,onRename,onClo
                 <button onClick={()=>onSwitch(p.id)} style={{flex:1,padding:'12px 16px',borderRadius:10,border:`1px solid ${activeProjectId===p.id?C.accent:C.border}`,background:activeProjectId===p.id?C.accentGlow:'transparent',color:activeProjectId===p.id?C.accent:C.text,fontSize:14,fontWeight:700,cursor:'pointer',textAlign:'left'}}>
                   {activeProjectId===p.id?'▶ ':''}{p.name}
                 </button>
-                <button onClick={()=>{setEditId(p.id);setEditVal(p.name);}} style={{background:'none',border:'none',color:C.muted,fontSize:16,cursor:'pointer',padding:'4px 6px'}}>✏</button>
+                <button onClick={()=>{setEditId(p.id);setEditVal(p.name);}} style={{background:'none',border:`1px solid ${C.border}`,color:C.muted,fontSize:11,cursor:'pointer',padding:'4px 8px',borderRadius:6,whiteSpace:'nowrap'}}>名前変更</button>
               </div>
             )}
           </div>
