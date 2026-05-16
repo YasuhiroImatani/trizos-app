@@ -61,11 +61,12 @@ const PHASE_COLORS = ["#6c63ff","#00c896","#c8a830","#5b6bff","#e84393","#00e5c8
 const PROJ_LIST_KEY='trizos_projects_v1';
 const ACTIVE_PROJ_KEY='trizos_active_proj';
 function getProjectsList(){try{const s=localStorage.getItem(PROJ_LIST_KEY);return s?JSON.parse(s):[{id:'default',name:'プロジェクト1'}];}catch{return[{id:'default',name:'プロジェクト1'}];}}
-function saveProjectsList(list){localStorage.setItem(PROJ_LIST_KEY,JSON.stringify(list));}
+function saveProjectsList(list){localStorage.setItem(PROJ_LIST_KEY,JSON.stringify(list));saveProjectsToSB(list);}
 function getActiveProjId(){return localStorage.getItem(ACTIVE_PROJ_KEY)||'default';}
-function saveProjMatrix(pid,m){try{localStorage.setItem('trizos_proj_'+pid,JSON.stringify(m));}catch{}}
-function loadProjMatrix(pid){try{const s=localStorage.getItem('trizos_proj_'+pid);return s?JSON.parse(s):null;}catch{return null;}}
-async function loadProjectCells(pid){if(pid==='default')return await loadCells();const saved=loadProjMatrix(pid);return saved||buildInitialCells();}
+window._activeProjId=localStorage.getItem('trizos_active_proj')||'default';
+async function saveProjectsToSB(list){try{await supa('trizos_cells','POST',{key:'__proj_list__',data:JSON.stringify(list)});}catch(e){}}
+async function loadProjectsFromSB(){try{const r=await supa('trizos_cells?select=data&key=eq.__proj_list__');if(r&&r.length)return JSON.parse(r[0].data);}catch(e){}return null;}
+async function loadProjectCells(pid){return await loadCells(pid);}
 
 function buildInitialCells() {
   const cells = {};
@@ -84,15 +85,23 @@ function buildInitialCells() {
   return cells;
 }
 
-async function loadCells() {
+async function loadCells(pid='default') {
   try {
-    const rows = await supa("trizos_cells?select=key,data");
+    const filter = pid === 'default'
+      ? 'key=not.like.*:*&key=neq.__proj_list__'
+      : 'key=like.' + pid + ':*';
     const base = buildInitialCells();
-    if (rows?.length) rows.forEach(r => { if (base[r.key]) base[r.key] = { ...base[r.key], ...r.data, tasks: r.data.tasks || [] }; });
+    const rows = await supa('trizos_cells?select=key,data&' + filter);
+    const pfxLen = pid === 'default' ? 0 : pid.length + 1;
+    rows.forEach(r => {
+      const k = pfxLen ? r.key.substring(pfxLen) : r.key;
+      if (base[k]) base[k] = { ...base[k], ...r.data, tasks: r.data.tasks || [] };
+    });
     return base;
   } catch { return buildInitialCells(); }
 }
 async function saveCell(cell) {
+  const _sbKey=(window._activeProjId&&window._activeProjId!=="default")?window._activeProjId+":"+cell.key:cell.key;
   try {
     const res = await fetch(`${SUPA_URL}/rest/v1/trizos_cells`, {
       method: "POST",
@@ -102,7 +111,7 @@ async function saveCell(cell) {
         "Content-Type": "application/json",
         "Prefer": "resolution=merge-duplicates,return=representation",
       },
-      body: JSON.stringify({ key: cell.key, data: cell }),
+      body: JSON.stringify({ key: _sbKey, data: cell }),
     });
     const txt = await res.text();
     if (!res.ok) {
@@ -1276,7 +1285,7 @@ export default function App() {
   }
 
   function switchToProject(id){
-    if(matrix)saveProjMatrix(activeProjId,matrix);
+    if(matrix)window._activeProjId=id;
     localStorage.setItem(ACTIVE_PROJ_KEY,id);
     setActiveProjId(id);
     setProjModalOpen(false);
@@ -1297,7 +1306,7 @@ export default function App() {
     if(id===activeProjId)return;
     const list=projects.filter(p=>p.id!==id);
     setProjects(list);saveProjectsList(list);
-    try{localStorage.removeItem('trizos_proj_'+id);}catch{}
+    try{supa('trizos_cells?key=like.'+id+'%3A*','DELETE');}catch{}
   }
   function handleSave(updated) {
     setMatrix(prev => ({ ...prev, [updated.key]: updated }));
