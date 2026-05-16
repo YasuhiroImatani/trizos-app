@@ -1,3 +1,4 @@
+import { useState, useEffect, useRef } from "react";
 Remove redundant hamburger menu buttonconst SUPA_URL = "https://nemmhucubeozvlhncivu.supabase.co";
 const SUPA_KEY = "sb_publishable_z1BlRpR03jJTUNRKiaB1ZQ_avox17xS";
 
