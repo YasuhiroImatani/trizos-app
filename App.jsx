@@ -1250,6 +1250,7 @@ export default function App() {
   function updateBizName(row,name){ const n={...bizNames,[row]:name}; setBizNames(n); localStorage.setItem('trizos_biz_names',JSON.stringify(n)); }
 
   useEffect(()=>{
+    loadProjectsFromSB().then(sbList=>{if(sbList&&sbList.length){setProjects(sbList);localStorage.setItem(PROJ_LIST_KEY,JSON.stringify(sbList));}});
     Promise.all([loadProjectCells(getActiveProjId()),loadMembers(),loadGlobalPlan(),loadCellPlansIndex()]).then(([m,mb,pl,cpi])=>{setMatrix(m);setMembers(mb);setPlan(pl);setCellPlansIndex(cpi);setLoading(false);});
   },[]);
 
