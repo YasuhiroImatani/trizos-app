@@ -1,5 +1,4 @@
-import { useState, useEffect, useRef } from "react";
-const SUPA_URL = "https://nemmhucubeozvlhncivu.supabase.co";
+Remove redundant hamburger menu buttonconst SUPA_URL = "https://nemmhucubeozvlhncivu.supabase.co";
 const SUPA_KEY = "sb_publishable_z1BlRpR03jJTUNRKiaB1ZQ_avox17xS";
 
 async function supa(path, method = "GET", body = null) {
@@ -1320,7 +1319,7 @@ export default function App() {
       {/* TOP HEADER */}
       <div style={{background:C.surface,borderBottom:`1px solid ${C.border}`,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <button onClick={()=>setProjModalOpen(true)} style={{background:"none",border:"none",color:C.text,fontSize:22,cursor:"pointer",padding:"0 6px 0 0",lineHeight:1,flexShrink:0}}>☰</button>
+          
           <div style={{width:32,height:32,borderRadius:8,background:C.accentGlow,border:`1px solid ${C.accent}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>⊞</div>
           <div onClick={()=>setProjModalOpen(true)} style={{cursor:'pointer'}}>
             <div style={{fontSize:15,fontWeight:900,color:C.accent,lineHeight:1.1}}>
