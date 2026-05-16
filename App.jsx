@@ -459,7 +459,7 @@ function FRow({label,children}) {
 const inp = {width:"100%",background:C.card2,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 13px",color:C.text,fontSize:13,boxSizing:"border-box",outline:"none"};
 
 // ─── HOME TAB ─────────────────────────────────────────────────────────────────
-function HomeTab({ matrix, onCellClick, cellPlansIndex }) {
+function HomeTab({ matrix, onCellClick, cellPlansIndex, selectedBiz, bizNames }) {
   // cell color based on progress
   function cellBg(p) {
     if(p===0) return {bg:"#ffffff",border:"#e0e0e0"};
@@ -479,10 +479,10 @@ function HomeTab({ matrix, onCellClick, cellPlansIndex }) {
         ))}
       </div>
 
-      {ROW_LABELS.map(row=>(
+      {(selectedBiz ? [selectedBiz] : ROW_LABELS).map(row=>(
         <div key={row} style={{display:"grid",gridTemplateColumns:"28px 1fr 1fr 1fr",gap:6,marginBottom:6}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <span style={{fontSize:10,color:C.sub,writingMode:"vertical-rl",letterSpacing:"0.1em"}}>{row}</span>
+            <span style={{fontSize:10,color:C.sub,writingMode:"vertical-rl",letterSpacing:"0.1em"}}>{(bizNames&&bizNames[row])||row}</span>
           </div>
           {COL_LABELS.map(col=>{
             const cells=Object.values(matrix).filter(c=>c.row===row&&c.col===col);
@@ -1131,6 +1131,33 @@ function CellPlanModal({ cell, matrix, onClose, onProgressUpdate }) {
   );
 }
 
+// ─── BIZ ITEM ────────────────────────────────────────────────────────────────
+function BizItem({ row, bizNames, selectedBiz, setSelectedBiz, setDrawerOpen, updateBizName }) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(bizNames[row]||row);
+  const name = bizNames[row]||row;
+  useEffect(()=>{ setVal(bizNames[row]||row); },[bizNames,row]);
+  if (editing) return (
+    <div style={{display:"flex",gap:6}}>
+      <input value={val} onChange={e=>setVal(e.target.value)} autoFocus
+        onKeyDown={e=>{if(e.key==="Enter"){updateBizName(row,val);setEditing(false);}}}
+        style={{flex:1,background:C.card2,border:`1px solid ${C.accent}`,borderRadius:8,padding:"8px 12px",color:C.text,fontSize:13,outline:"none"}}/>
+      <button onClick={()=>{updateBizName(row,val);setEditing(false);}}
+        style={{background:C.accent,border:"none",borderRadius:8,color:"#fff",padding:"0 14px",cursor:"pointer",fontSize:14,fontWeight:700}}>✓</button>
+    </div>
+  );
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:6}}>
+      <button onClick={()=>{setSelectedBiz(row);setDrawerOpen(false);}}
+        style={{flex:1,padding:"12px 16px",borderRadius:10,border:`1px solid ${selectedBiz===row?C.accent:C.border}`,background:selectedBiz===row?C.accentGlow:"transparent",color:selectedBiz===row?C.accent:C.text,fontSize:13,fontWeight:700,cursor:"pointer",textAlign:"left"}}>
+        {name}
+      </button>
+      <button onClick={()=>{setVal(name);setEditing(true);}}
+        style={{background:"none",border:"none",color:C.muted,fontSize:16,cursor:"pointer",padding:"4px 6px",lineHeight:1}}>✏</button>
+    </div>
+  );
+}
+
 // ─── TAB BAR ──────────────────────────────────────────────────────────────────
 const TAB_ICONS = {
   home: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="22" height="22"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>),
@@ -1154,6 +1181,10 @@ export default function App() {
   const [cellPlansIndex, setCellPlansIndex]=useState(new Set());
   const [cellPlanModal, setCellPlanModal]=useState(null); // { cell, plan }
   const [openPlanCell, setOpenPlanCell]=useState(null);
+  const [selectedBiz, setSelectedBiz]=useState(null);
+  const [drawerOpen, setDrawerOpen]=useState(false);
+  const [bizNames, setBizNames]=useState(()=>{ try{return JSON.parse(localStorage.getItem('trizos_biz_names')||'{}');}catch{return {};} });
+  function updateBizName(row,name){ const n={...bizNames,[row]:name}; setBizNames(n); localStorage.setItem('trizos_biz_names',JSON.stringify(n)); }
 
   useEffect(()=>{
     Promise.all([loadCells(),loadMembers(),loadGlobalPlan(),loadCellPlansIndex()]).then(([m,mb,pl,cpi])=>{setMatrix(m);setMembers(mb);setPlan(pl);setCellPlansIndex(cpi);setLoading(false);});
@@ -1211,6 +1242,7 @@ export default function App() {
       {/* TOP HEADER */}
       <div style={{background:C.surface,borderBottom:`1px solid ${C.border}`,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <button onClick={()=>setDrawerOpen(true)} style={{background:"none",border:"none",color:C.text,fontSize:22,cursor:"pointer",padding:"0 6px 0 0",lineHeight:1,flexShrink:0}}>☰</button>
           <div style={{width:32,height:32,borderRadius:8,background:C.accentGlow,border:`1px solid ${C.accent}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>⊞</div>
           <div>
             <div style={{fontSize:15,fontWeight:900,color:C.accent,lineHeight:1.1}}>{TAB_PAGE_TITLES[tab]}</div>
@@ -1223,9 +1255,33 @@ export default function App() {
         </div>
       </div>
 
+      {/* SIDE DRAWER */}
+      {drawerOpen&&<div onClick={()=>setDrawerOpen(false)} style={{position:"fixed",inset:0,zIndex:300,background:"rgba(0,0,0,0.55)"}}>
+        <div onClick={e=>e.stopPropagation()} style={{position:"absolute",top:0,left:0,bottom:0,width:250,background:C.surface,borderRight:`1px solid ${C.border}`,padding:20,display:"flex",flexDirection:"column",gap:10,overflowY:"auto"}}>
+          <div style={{fontSize:15,fontWeight:900,color:C.accent,marginBottom:4}}>事業を切替</div>
+          <button onClick={()=>{setSelectedBiz(null);setDrawerOpen(false);}}
+            style={{padding:"12px 16px",borderRadius:10,border:`1px solid ${selectedBiz===null?C.accent:C.border}`,background:selectedBiz===null?C.accentGlow:"transparent",color:selectedBiz===null?C.accent:C.text,fontSize:13,fontWeight:700,cursor:"pointer",textAlign:"left",marginBottom:4}}>
+            ✦ 全事業を表示
+          </button>
+          {ROW_LABELS.map(row=>(<BizItem key={row} row={row} bizNames={bizNames} selectedBiz={selectedBiz} setSelectedBiz={setSelectedBiz} setDrawerOpen={setDrawerOpen} updateBizName={updateBizName}/>))}
+        </div>
+      </div>}
+
+      {/* SIDE DRAWER */}
+      {drawerOpen&&<div onClick={()=>setDrawerOpen(false)} style={{position:"fixed",inset:0,zIndex:300,background:"rgba(0,0,0,0.55)"}}>
+        <div onClick={e=>e.stopPropagation()} style={{position:"absolute",top:0,left:0,bottom:0,width:250,background:C.surface,borderRight:`1px solid ${C.border}`,padding:20,display:"flex",flexDirection:"column",gap:10,overflowY:"auto"}}>
+          <div style={{fontSize:15,fontWeight:900,color:C.accent,marginBottom:4}}>事業を切替</div>
+          <button onClick={()=>{setSelectedBiz(null);setDrawerOpen(false);}}
+            style={{padding:"12px 16px",borderRadius:10,border:`1px solid ${selectedBiz===null?C.accent:C.border}`,background:selectedBiz===null?C.accentGlow:"transparent",color:selectedBiz===null?C.accent:C.text,fontSize:13,fontWeight:700,cursor:"pointer",textAlign:"left",marginBottom:4}}>
+            ✦ 全事業を表示
+          </button>
+          {ROW_LABELS.map(row=>(<BizItem key={row} row={row} bizNames={bizNames} selectedBiz={selectedBiz} setSelectedBiz={setSelectedBiz} setDrawerOpen={setDrawerOpen} updateBizName={updateBizName}/>))}
+        </div>
+      </div>}
+
       {/* CONTENT */}
       <div style={{flex:1,overflowY:"auto",padding:"14px 12px 90px"}}>
-        {tab==="home"&&<HomeTab matrix={matrix} onCellClick={setSelected} cellPlansIndex={cellPlansIndex}/>}
+        {tab==="home"&&<HomeTab matrix={matrix} onCellClick={setSelected} cellPlansIndex={cellPlansIndex} selectedBiz={selectedBiz} bizNames={bizNames}/>}
         {tab==="dash"&&<DashTab matrix={matrix} members={members}/>}
         {tab==="road"&&<RoadTab matrix={matrix} onOpenPlan={setOpenPlanCell}/>}
         {tab==="team"&&<TeamTab members={members} setMembers={setMembers} matrix={matrix}/>}
