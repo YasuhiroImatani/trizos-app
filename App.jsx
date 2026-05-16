@@ -58,6 +58,16 @@ const PRIORITY_LIST = ["低", "中", "高"];
 const MEMBER_COLORS = ["#6c63ff","#00c896","#c8a830","#5b6bff","#e84393","#ff9f7c","#a07cff"];
 const PHASE_COLORS = ["#6c63ff","#00c896","#c8a830","#5b6bff","#e84393","#00e5c8","#a07cff","#ff9f7c"];
 
+// ─── PROJECT HELPERS ────────────────────────────────────────────────────────
+const PROJ_LIST_KEY='trizos_projects_v1';
+const ACTIVE_PROJ_KEY='trizos_active_proj';
+function getProjectsList(){try{const s=localStorage.getItem(PROJ_LIST_KEY);return s?JSON.parse(s):[{id:'default',name:'プロジェクト1'}];}catch{return[{id:'default',name:'プロジェクト1'}];}}
+function saveProjectsList(list){localStorage.setItem(PROJ_LIST_KEY,JSON.stringify(list));}
+function getActiveProjId(){return localStorage.getItem(ACTIVE_PROJ_KEY)||'default';}
+function saveProjMatrix(pid,m){try{localStorage.setItem('trizos_proj_'+pid,JSON.stringify(m));}catch{}}
+function loadProjMatrix(pid){try{const s=localStorage.getItem('trizos_proj_'+pid);return s?JSON.parse(s):null;}catch{return null;}}
+async function loadProjectCells(pid){if(pid==='default')return await loadCells();const saved=loadProjMatrix(pid);return saved||buildInitialCells();}
+
 function buildInitialCells() {
   const cells = {};
   ROW_LABELS.forEach(row => COL_LABELS.forEach(col => TYPES.forEach(t1 => TYPES.forEach(t2 => {
@@ -1158,6 +1168,46 @@ function BizItem({ row, bizNames, selectedBiz, setSelectedBiz, setDrawerOpen, up
   );
 }
 
+// ─── PROJECT MODAL ───────────────────────────────────────────────────────────
+function ProjectModal({projects,activeProjectId,onSwitch,onCreate,onRename,onClose}){
+  const [newName,setNewName]=useState('');
+  const [editId,setEditId]=useState(null);
+  const [editVal,setEditVal]=useState('');
+  return(
+    <div onClick={onClose} style={{position:'fixed',inset:0,zIndex:400,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'flex-end'}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:'100%',maxWidth:430,margin:'0 auto',background:C.surface,borderRadius:'16px 16px 0 0',padding:20,maxHeight:'70vh',overflowY:'auto'}}>
+        <div style={{fontSize:15,fontWeight:900,color:C.accent,marginBottom:16}}>プロジェクト切替</div>
+        {projects.map(p=>(
+          <div key={p.id} style={{marginBottom:8}}>
+            {editId===p.id?(
+              <div style={{display:'flex',gap:6}}>
+                <input value={editVal} onChange={e=>setEditVal(e.target.value)} autoFocus
+                  onKeyDown={e=>{if(e.key==='Enter'){onRename(p.id,editVal);setEditId(null);}}}
+                  style={{flex:1,background:C.card2,border:`1px solid ${C.accent}`,borderRadius:8,padding:'8px 12px',color:C.text,fontSize:13,outline:'none'}}/>
+                <button onClick={()=>{onRename(p.id,editVal);setEditId(null);}} style={{background:C.accent,border:'none',borderRadius:8,color:'#fff',padding:'0 14px',cursor:'pointer',fontSize:14,fontWeight:700}}>✓</button>
+                <button onClick={()=>setEditId(null)} style={{background:'none',border:`1px solid ${C.border}`,borderRadius:8,color:C.muted,padding:'0 10px',cursor:'pointer'}}>✕</button>
+              </div>
+            ):(
+              <div style={{display:'flex',alignItems:'center',gap:6}}>
+                <button onClick={()=>onSwitch(p.id)} style={{flex:1,padding:'12px 16px',borderRadius:10,border:`1px solid ${activeProjectId===p.id?C.accent:C.border}`,background:activeProjectId===p.id?C.accentGlow:'transparent',color:activeProjectId===p.id?C.accent:C.text,fontSize:14,fontWeight:700,cursor:'pointer',textAlign:'left'}}>
+                  {activeProjectId===p.id?'▶ ':''}{p.name}
+                </button>
+                <button onClick={()=>{setEditId(p.id);setEditVal(p.name);}} style={{background:'none',border:'none',color:C.muted,fontSize:16,cursor:'pointer',padding:'4px 6px'}}>✏</button>
+              </div>
+            )}
+          </div>
+        ))}
+        <div style={{display:'flex',gap:8,marginTop:16,borderTop:`1px solid ${C.border}`,paddingTop:16}}>
+          <input value={newName} onChange={e=>setNewName(e.target.value)} placeholder='新規PJ名...'
+            onKeyDown={e=>{if(e.key==='Enter'&&newName.trim()){onCreate(newName.trim());setNewName('');}}}
+            style={{flex:1,background:C.card2,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 12px',color:C.text,fontSize:13,outline:'none'}}/>
+          <button onClick={()=>{if(newName.trim()){onCreate(newName.trim());setNewName('');}}} style={{background:C.accent,border:'none',borderRadius:8,color:'#fff',padding:'0 16px',cursor:'pointer',fontSize:13,fontWeight:700}}>＋追加</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── TAB BAR ──────────────────────────────────────────────────────────────────
 const TAB_ICONS = {
   home: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="22" height="22"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>),
@@ -1181,13 +1231,16 @@ export default function App() {
   const [cellPlansIndex, setCellPlansIndex]=useState(new Set());
   const [cellPlanModal, setCellPlanModal]=useState(null); // { cell, plan }
   const [openPlanCell, setOpenPlanCell]=useState(null);
+  const [projects, setProjects]=useState(getProjectsList);
+  const [activeProjId, setActiveProjId]=useState(getActiveProjId);
+  const [projModalOpen, setProjModalOpen]=useState(false);
   const [selectedBiz, setSelectedBiz]=useState(null);
   const [drawerOpen, setDrawerOpen]=useState(false);
   const [bizNames, setBizNames]=useState(()=>{ try{return JSON.parse(localStorage.getItem('trizos_biz_names')||'{}');}catch{return {};} });
   function updateBizName(row,name){ const n={...bizNames,[row]:name}; setBizNames(n); localStorage.setItem('trizos_biz_names',JSON.stringify(n)); }
 
   useEffect(()=>{
-    Promise.all([loadCells(),loadMembers(),loadGlobalPlan(),loadCellPlansIndex()]).then(([m,mb,pl,cpi])=>{setMatrix(m);setMembers(mb);setPlan(pl);setCellPlansIndex(cpi);setLoading(false);});
+    Promise.all([loadProjectCells(getActiveProjId()),loadMembers(),loadGlobalPlan(),loadCellPlansIndex()]).then(([m,mb,pl,cpi])=>{setMatrix(m);setMembers(mb);setPlan(pl);setCellPlansIndex(cpi);setLoading(false);});
   },[]);
 
   async function handleOpenCellPlan(cell) {
@@ -1218,10 +1271,28 @@ export default function App() {
   }
 
   function handleAutoSave(cell) {
-    setMatrix(prev => ({...prev, [cell.key]: cell}));
-    saveCell(cell);
+    setMatrix(prev=>{const nm={...prev,[cell.key]:cell};saveProjMatrix(activeProjId,nm);return nm;});
+    if(activeProjId==='default')saveCell(cell);
   }
 
+  function switchToProject(id){
+    if(matrix)saveProjMatrix(activeProjId,matrix);
+    localStorage.setItem(ACTIVE_PROJ_KEY,id);
+    setActiveProjId(id);
+    setProjModalOpen(false);
+    setLoading(true);
+    loadProjectCells(id).then(m=>{setMatrix(m);setLoading(false);});
+  }
+  function createProject(name){
+    const id='p_'+Date.now();
+    const list=[...projects,{id,name}];
+    setProjects(list);saveProjectsList(list);
+    switchToProject(id);
+  }
+  function renameProject(id,name){
+    const list=projects.map(p=>p.id===id?{...p,name}:p);
+    setProjects(list);saveProjectsList(list);
+  }
   function handleSave(updated) {
     setMatrix(prev => ({ ...prev, [updated.key]: updated }));
     setSaving(true);
@@ -1244,8 +1315,10 @@ export default function App() {
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <button onClick={()=>setDrawerOpen(true)} style={{background:"none",border:"none",color:C.text,fontSize:22,cursor:"pointer",padding:"0 6px 0 0",lineHeight:1,flexShrink:0}}>☰</button>
           <div style={{width:32,height:32,borderRadius:8,background:C.accentGlow,border:`1px solid ${C.accent}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>⊞</div>
-          <div>
-            <div style={{fontSize:15,fontWeight:900,color:C.accent,lineHeight:1.1}}>{TAB_PAGE_TITLES[tab]}</div>
+          <div onClick={()=>setProjModalOpen(true)} style={{cursor:'pointer'}}>
+            <div style={{fontSize:15,fontWeight:900,color:C.accent,lineHeight:1.1}}>
+              {(projects.find(p=>p.id===activeProjId)||{name:'TRIZ OS'}).name} <span style={{fontSize:12,opacity:0.7}}>▾</span>
+            </div>
             <div style={{fontSize:10,color:C.muted}}>{TAB_PAGE_SUBS[tab]}</div>
           </div>
         </div>
@@ -1254,6 +1327,9 @@ export default function App() {
           <button onClick={exportCSV} style={{padding:"6px 14px",borderRadius:20,border:"none",background:C.card2,color:C.text,fontSize:11,fontWeight:600,cursor:"pointer"}}>CSV{saving?" ●":""}</button>
         </div>
       </div>
+
+      {/* PROJECT MODAL */}
+      {projModalOpen&&<ProjectModal projects={projects} activeProjectId={activeProjId} onSwitch={switchToProject} onCreate={createProject} onRename={renameProject} onClose={()=>setProjModalOpen(false)}/>}
 
       {/* SIDE DRAWER */}
       {drawerOpen&&<div onClick={()=>setDrawerOpen(false)} style={{position:"fixed",inset:0,zIndex:300,background:"rgba(0,0,0,0.55)"}}>
