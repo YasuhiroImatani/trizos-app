@@ -58,6 +58,33 @@ const PRIORITY_LIST = ["低", "中", "高"];
 const MEMBER_COLORS = ["#6c63ff","#00c896","#c8a830","#5b6bff","#e84393","#ff9f7c","#a07cff"];
 const PHASE_COLORS = ["#6c63ff","#00c896","#c8a830","#5b6bff","#e84393","#00e5c8","#a07cff","#ff9f7c"];
 
+// ★ 移動時にコピーするフィールド(key/row/col等の構造フィールドは除外)
+const MOVABLE_FIELDS = ["name","progress","status","priority","assignee","startDate","deadline","kpi","kgi","ksf","risk","next","description","income","expense","tasks","rivals"];
+
+function buildDefaultData(row, col, t1, t2) {
+  return {
+    name: `${row}化の${col} ${t1}×${t2}戦略`,
+    progress: 0, status: "未着手", priority: "中",
+    assignee: "", startDate: "", deadline: "",
+    kpi: "", kgi: "", ksf: "", risk: "", next: "",
+    description: `${row}領域における「${col}」の${t1}×${t2}の打ち手。`,
+    income: 0, expense: 0, tasks: [], rivals: [],
+  };
+}
+
+function hasData(cell) {
+  if (!cell) return false;
+  return cell.progress > 0 || cell.status !== "未着手" || cell.priority !== "中" ||
+    (cell.assignee && cell.assignee.trim()) ||
+    (cell.kpi && cell.kpi.trim()) || (cell.kgi && cell.kgi.trim()) ||
+    (cell.ksf && cell.ksf.trim()) ||
+    (cell.risk && cell.risk.trim()) || (cell.next && cell.next.trim()) ||
+    (cell.income && cell.income > 0) || (cell.expense && cell.expense > 0) ||
+    (cell.tasks && cell.tasks.length > 0) ||
+    (cell.rivals && cell.rivals.length > 0) ||
+    !cell.name.includes("戦略");
+}
+
 // ─── PROJECT HELPERS ────────────────────────────────────────────────────────
 const PROJ_LIST_KEY='trizos_projects_v1';
 const ACTIVE_PROJ_KEY='trizos_active_proj';
@@ -255,7 +282,142 @@ function TaskSection({ tasks, onChange }) {
 }
 
 // ─── CELL MODAL ───────────────────────────────────────────────────────────────
-function CellModal({ cell, onClose, onSave, matrix, onOpenPlan, onProgressChange, onAutoSave, cellPlansIndex }) {
+// ─── MOVE PICKER MODAL ────────────────────────────────────────────────────────
+function MovePicker({ sourceCell, matrix, onMove, onCancel }) {
+  const [targetKey, setTargetKey] = useState(null);
+  const targetCell = targetKey ? matrix[targetKey] : null;
+  const targetHasData = targetCell ? hasData(targetCell) : false;
+
+  function mpCellBg(p) {
+    if(p===0) return {bg:"#ffffff11",border:"#ffffff22"};
+    if(p>=70) return {bg:"#1a1f3a",border:"#3a4070"};
+    if(p>=40) return {bg:"#1f1a0a",border:"#504010"};
+    return {bg:"#1f0f18",border:"#50203a"};
+  }
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"#000d",zIndex:400,overflowY:"auto",display:"flex",flexDirection:"column"}} onClick={onCancel}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:430,margin:"0 auto",background:C.bg,minHeight:"100vh",padding:"16px 12px"}}>
+
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+          <div>
+            <div style={{fontSize:14,fontWeight:800,color:C.accent}}>移動先を選択</div>
+            <div style={{fontSize:11,color:C.sub,marginTop:2}}>
+              <span style={{color:C.yellow,fontWeight:700}}>{sourceCell.name}</span> ({sourceCell.progress}%) を引っ越し
+            </div>
+          </div>
+          <button onClick={onCancel} style={{width:36,height:36,borderRadius:"50%",background:C.card,border:`1px solid ${C.border}`,color:C.sub,fontSize:16,cursor:"pointer"}}>✕</button>
+        </div>
+
+        <div style={{background:C.accent+"22",border:`1px solid ${C.accent}`,borderRadius:12,padding:12,marginBottom:16}}>
+          <div style={{fontSize:10,color:C.accent,fontWeight:700,marginBottom:4}}>移動元</div>
+          <div style={{fontSize:13,fontWeight:700,color:C.text}}>{sourceCell.name}</div>
+          <div style={{fontSize:10,color:C.sub}}>{sourceCell.row} / {sourceCell.col} / {sourceCell.type1}×{sourceCell.type2} — {sourceCell.progress}%</div>
+        </div>
+
+        <div style={{marginBottom:16}}>
+          <div style={{display:"flex",gap:4,marginBottom:4,paddingLeft:28}}>
+            {COL_LABELS.map(c=>(
+              <div key={c} style={{flex:1,textAlign:"center",fontSize:10,fontWeight:700,color:C.sub}}>{c}</div>
+            ))}
+          </div>
+
+          {ROW_LABELS.map(row=>(
+            <div key={row} style={{display:"grid",gridTemplateColumns:"24px 1fr 1fr 1fr",gap:4,marginBottom:4}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <span style={{fontSize:9,color:C.sub,writingMode:"vertical-rl"}}>{row}</span>
+              </div>
+              {COL_LABELS.map(col=>(
+                <div key={col} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:4}}>
+                  <div style={{fontSize:8,color:C.muted,marginBottom:3,textAlign:"center"}}>{row}-{col}</div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:2}}>
+                    {TYPES.flatMap(t1=>TYPES.map(t2=>{
+                      const key=`${row}__${col}__${t1}__${t2}`;
+                      const cell=matrix[key]; if(!cell)return null;
+                      const isSource = key === sourceCell.key;
+                      const isTarget = key === targetKey;
+                      const filled = hasData(cell);
+                      const {bg,border}=mpCellBg(cell.progress);
+
+                      return (
+                        <button key={key}
+                          onClick={()=> !isSource && setTargetKey(key)}
+                          disabled={isSource}
+                          style={{
+                            padding:"4px 2px",borderRadius:5,cursor:isSource?"not-allowed":"pointer",
+                            textAlign:"center",
+                            border: isTarget ? `2px solid ${C.green}` : isSource ? `2px solid ${C.accent}` : `1px solid ${filled ? border : "#333"}`,
+                            background: isTarget ? C.green+"22" : isSource ? C.accent+"22" : filled ? bg : "transparent",
+                            opacity: isSource ? 0.5 : 1,
+                            transition: "all 0.15s",
+                          }}>
+                          <div style={{fontSize:9,fontWeight:800,color:
+                            isTarget ? C.green : isSource ? C.accent :
+                            cell.progress===0 ? "#555" : pColor(cell.progress)
+                          }}>{cell.progress}%</div>
+                          <div style={{fontSize:6,color:C.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:32}}>
+                            {isSource ? "元" : isTarget ? "先" : cell.name.slice(0,3)}
+                          </div>
+                        </button>
+                      );
+                    }))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+
+        {targetKey && targetCell && (
+          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:16}}>
+            <div style={{fontSize:10,color:C.green,fontWeight:700,marginBottom:8}}>移動先</div>
+            <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:2}}>{targetCell.name}</div>
+            <div style={{fontSize:10,color:C.sub,marginBottom:12}}>
+              {targetCell.row} / {targetCell.col} / {targetCell.type1}×{targetCell.type2} — {targetCell.progress}%
+            </div>
+
+            {targetHasData && (
+              <div style={{background:C.yellow+"18",border:`1px solid ${C.yellow}44`,borderRadius:10,padding:10,marginBottom:12}}>
+                <div style={{fontSize:11,color:C.yellow,fontWeight:700}}>⚠ 移動先にデータがあります</div>
+                <div style={{fontSize:10,color:C.sub,marginTop:4}}>
+                  「入れ替え」で双方のデータを交換、「上書き」で移動先を消して上書きします
+                </div>
+              </div>
+            )}
+
+            <div style={{display:"flex",gap:8}}>
+              {targetHasData ? (
+                <>
+                  <button onClick={()=>onMove(sourceCell.key, targetKey, "swap")}
+                    style={{flex:1,padding:"13px 0",borderRadius:11,border:`1px solid ${C.blue}`,background:C.blue+"22",color:C.blue,fontWeight:800,fontSize:13,cursor:"pointer"}}>
+                    ↔ 入れ替え
+                  </button>
+                  <button onClick={()=>onMove(sourceCell.key, targetKey, "overwrite")}
+                    style={{flex:1,padding:"13px 0",borderRadius:11,border:`1px solid ${C.red}`,background:C.red+"22",color:C.red,fontWeight:800,fontSize:13,cursor:"pointer"}}>
+                    → 上書き
+                  </button>
+                </>
+              ) : (
+                <button onClick={()=>onMove(sourceCell.key, targetKey, "overwrite")}
+                  style={{flex:1,padding:"13px 0",borderRadius:11,border:"none",background:`linear-gradient(135deg,${C.accent},${C.purple})`,color:"#fff",fontWeight:800,fontSize:14,cursor:"pointer"}}>
+                  → ここに移動
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {!targetKey && (
+          <div style={{textAlign:"center",padding:20,color:C.muted,fontSize:12}}>
+            移動先のマスをタップしてください
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CellModal({ cell, onClose, onSave, matrix, onOpenPlan, onProgressChange, onAutoSave, cellPlansIndex, onStartMove }) {
   const [d, setD] = useState({...cell, tasks: cell.tasks||[]});
   const [editingName, setEditingName] = useState(false);
   const [aiText, setAiText] = useState("");
@@ -445,6 +607,13 @@ function CellModal({ cell, onClose, onSave, matrix, onOpenPlan, onProgressChange
               {aiLoading?"分析中...":"✦ AI分析を実行"}
             </button>
           </Sec>
+
+          {onStartMove && (
+            <button onClick={()=>{onSave(d); onStartMove(d);}}
+              style={{width:"100%",padding:"12px 0",borderRadius:11,border:`1px dashed ${C.purple}`,background:C.purple+"12",color:C.purple,fontWeight:700,fontSize:13,cursor:"pointer",marginTop:6,marginBottom:8,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+              <span style={{fontSize:18}}>↗</span> このセルを別マスに移動
+            </button>
+          )}
 
           <button onClick={()=>onOpenPlan(d)}
             style={{width:"100%",padding:"13px 0",borderRadius:13,border:`1px solid ${hasPlan(d.key)?C.teal:C.accent}`,
@@ -1248,6 +1417,7 @@ export default function App() {
   const [drawerOpen, setDrawerOpen]=useState(false);
   const [bizNames, setBizNames]=useState(()=>{ try{return JSON.parse(localStorage.getItem('trizos_biz_names')||'{}');}catch{return {};} });
   function updateBizName(row,name){ const n={...bizNames,[row]:name}; setBizNames(n); localStorage.setItem('trizos_biz_names',JSON.stringify(n)); }
+  const [movingCell, setMovingCell]=useState(null);
 
   useEffect(()=>{
     loadProjectsFromSB().then(sbList=>{if(sbList&&sbList.length){setProjects(sbList);localStorage.setItem(PROJ_LIST_KEY,JSON.stringify(sbList));}});
@@ -1314,6 +1484,41 @@ export default function App() {
     setMatrix(prev => ({ ...prev, [updated.key]: updated }));
     setSaving(true);
     saveCell(updated).finally(() => setSaving(false));
+  }
+
+  function handleStartMove(cell) {
+    setSelected(null);
+    setMovingCell(cell);
+  }
+
+  function handleMove(sourceKey, targetKey, mode) {
+    const src = matrix[sourceKey];
+    const tgt = matrix[targetKey];
+    if (!src || !tgt) return;
+
+    const srcData = {};
+    const tgtData = {};
+    MOVABLE_FIELDS.forEach(f => {
+      srcData[f] = src[f];
+      tgtData[f] = tgt[f];
+    });
+
+    const srcDefault = buildDefaultData(src.row, src.col, src.type1, src.type2);
+
+    let newSrc, newTgt;
+    if (mode === "swap") {
+      newSrc = { ...src, ...tgtData };
+      newTgt = { ...tgt, ...srcData };
+    } else {
+      newSrc = { ...src, ...srcDefault };
+      newTgt = { ...tgt, ...srcData };
+    }
+
+    setMatrix(prev => ({ ...prev, [sourceKey]: newSrc, [targetKey]: newTgt }));
+    setSaving(true);
+    Promise.all([saveCell(newSrc), saveCell(newTgt)]).finally(() => setSaving(false));
+    setMovingCell(null);
+    setSelected(null);
   }
 
   if(loading) return (
@@ -1398,7 +1603,15 @@ export default function App() {
       {selected&&<CellModal cell={matrix[selected.key]} matrix={matrix}
         onClose={()=>setSelected(null)} onSave={handleSave}
         onOpenPlan={setOpenPlanCell} onProgressChange={handleProgressUpdate}
-        onAutoSave={handleAutoSave}/>}
+        onAutoSave={handleAutoSave} onStartMove={handleStartMove}/>}
+      {movingCell && matrix && (
+        <MovePicker
+          sourceCell={matrix[movingCell.key]}
+          matrix={matrix}
+          onMove={handleMove}
+          onCancel={()=>setMovingCell(null)}
+        />
+      )}
       {cellPlanModal&&<CellPlanModal cell={cellPlanModal.cell} initialPlan={cellPlanModal.plan}
         onClose={()=>setCellPlanModal(null)}
         onSaved={handleCellPlanSaved}
