@@ -125,11 +125,33 @@ async function loadCells(pid='default') {
       const k = pfxLen ? r.key.substring(pfxLen) : r.key;
       if (base[k]) base[k] = { ...base[k], ...r.data, tasks: r.data.tasks || [] };
     });
+    try { localStorage.setItem('trizos_cache_' + pid, JSON.stringify(base)); } catch {}
     return base;
-  } catch { return buildInitialCells(); }
+  } catch {
+    try {
+      const cached = localStorage.getItem('trizos_cache_' + pid)
+                  || localStorage.getItem('trizos_proj_' + pid);
+      if (cached) {
+        const data = JSON.parse(cached);
+        if (Object.keys(data).length > 0) return data;
+      }
+    } catch {}
+    return buildInitialCells();
+  }
 }
 async function saveCell(cell) {
-  const _sbKey=(window._activeProjId&&window._activeProjId!=="default")?window._activeProjId+":"+cell.key:cell.key;
+  const pid = window._activeProjId || 'default';
+  const _sbKey = (pid && pid !== 'default') ? pid + ':' + cell.key : cell.key;
+  // 常にLocalStorageキャッシュに保存（オフライン対応）
+  try {
+    const cacheKey = 'trizos_cache_' + pid;
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      const data = JSON.parse(cached);
+      data[cell.key] = cell;
+      localStorage.setItem(cacheKey, JSON.stringify(data));
+    }
+  } catch {}
   try {
     const res = await fetch(`${SUPA_URL}/rest/v1/trizos_cells`, {
       method: "POST",
@@ -141,14 +163,12 @@ async function saveCell(cell) {
       },
       body: JSON.stringify({ key: _sbKey, data: cell }),
     });
-    const txt = await res.text();
     if (!res.ok) {
+      const txt = await res.text();
       console.error("saveCell error", res.status, txt);
-      alert(`保存エラー (${res.status}): ${txt}`);
     }
   } catch(e) {
-    console.error("saveCell exception", e);
-    alert(`保存例外: ${e.message}`);
+    console.warn("saveCell: Supabase unavailable, saved to localStorage only", e.message);
   }
 }
 async function loadMembers() {
@@ -1452,9 +1472,12 @@ export default function App() {
   }
 
   function handleAutoSave(cell) {
-    setMatrix(prev=>{const nm={...prev,[cell.key]:cell};saveProjMatrix(activeProjId,nm);return nm;});
-    if(activeProjId==='default')saveCell(cell);
-  }
+  setMatrix(prev => {
+    const nm = {...prev, [cell.key]: cell};
+    return nm;
+  });
+  saveCell(cell);
+}
 
   function switchToProject(id){
     if(matrix)window._activeProjId=id;
